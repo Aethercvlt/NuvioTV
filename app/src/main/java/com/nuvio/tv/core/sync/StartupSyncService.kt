@@ -5,7 +5,6 @@ import com.nuvio.tv.core.auth.AuthManager
 import com.nuvio.tv.core.plugin.PluginManager
 import com.nuvio.tv.core.profile.ProfileManager
 import com.nuvio.tv.data.local.LibraryPreferences
-import com.nuvio.tv.data.local.TraktAuthDataStore
 import com.nuvio.tv.data.local.WatchProgressPreferences
 import com.nuvio.tv.data.local.WatchedItemsPreferences
 import com.nuvio.tv.data.repository.AddonRepositoryImpl
@@ -37,11 +36,11 @@ class StartupSyncService @Inject constructor(
     private val addonRepository: AddonRepositoryImpl,
     private val watchProgressRepository: WatchProgressRepositoryImpl,
     private val libraryRepository: LibraryRepositoryImpl,
-    private val traktAuthDataStore: TraktAuthDataStore,
     private val watchProgressPreferences: WatchProgressPreferences,
     private val libraryPreferences: LibraryPreferences,
     private val watchedItemsPreferences: WatchedItemsPreferences,
-    private val profileManager: ProfileManager
+    private val profileManager: ProfileManager,
+    private val syncProviderState: SyncProviderState
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var startupPullJob: Job? = null
@@ -170,10 +169,9 @@ class StartupSyncService @Inject constructor(
                 addonRepository.isSyncingFromRemote = false
             }
 
-            val isPrimaryProfile = profileManager.activeProfileId.value == 1
-            val isTraktConnected = isPrimaryProfile && traktAuthDataStore.isAuthenticated.first()
-            Log.d(TAG, "Watch progress sync: isTraktConnected=$isTraktConnected isPrimaryProfile=$isPrimaryProfile")
-            if (!isTraktConnected) {
+            val isTraktActive = syncProviderState.isTraktActive()
+            Log.d(TAG, "Watch progress sync: isTraktActive=$isTraktActive")
+            if (!isTraktActive) {
                 // Pull library and watched items first — these are lightweight and critical.
                 // Watch progress is pulled last because the table is large and may time out;
                 // a failure there must not block the other syncs.
@@ -214,7 +212,7 @@ class StartupSyncService @Inject constructor(
                     watchProgressRepository.isSyncingFromRemote = false
                 }
             } else {
-                Log.d(TAG, "Skipping watch progress & library sync (Trakt connected)")
+                Log.d(TAG, "Skipping watch progress & library sync (Trakt selected & active)")
             }
             return Result.success(Unit)
         } catch (e: Exception) {

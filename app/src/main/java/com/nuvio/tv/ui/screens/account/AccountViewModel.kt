@@ -12,11 +12,11 @@ import com.nuvio.tv.core.qr.QrCodeGenerator
 import com.nuvio.tv.core.sync.AddonSyncService
 import com.nuvio.tv.core.sync.LibrarySyncService
 import com.nuvio.tv.core.sync.PluginSyncService
+import com.nuvio.tv.core.sync.SyncProviderState
 import com.nuvio.tv.core.sync.WatchProgressSyncService
 import com.nuvio.tv.core.sync.WatchedItemsSyncService
 import com.nuvio.tv.data.local.LibraryPreferences
 import com.nuvio.tv.data.local.WatchedItemsPreferences
-import com.nuvio.tv.data.local.TraktAuthDataStore
 import com.nuvio.tv.data.local.WatchProgressPreferences
 import com.nuvio.tv.data.repository.AddonRepositoryImpl
 import com.nuvio.tv.data.repository.LibraryRepositoryImpl
@@ -57,7 +57,7 @@ class AccountViewModel @Inject constructor(
     private val watchProgressPreferences: WatchProgressPreferences,
     private val libraryPreferences: LibraryPreferences,
     private val watchedItemsPreferences: WatchedItemsPreferences,
-    private val traktAuthDataStore: TraktAuthDataStore,
+    private val syncProviderState: SyncProviderState,
     private val postgrest: Postgrest,
     private val profileManager: ProfileManager
 ) : ViewModel() {
@@ -590,9 +590,14 @@ class AccountViewModel @Inject constructor(
             addonRepository.isSyncingFromRemote = false
 
             val isPrimaryProfile = profileManager.activeProfileId.value == 1
-            val isTraktConnected = isPrimaryProfile && traktAuthDataStore.isAuthenticated.first()
-            Log.d("AccountViewModel", "pullRemoteData: isTraktConnected=$isTraktConnected isPrimaryProfile=$isPrimaryProfile")
-            if (!isTraktConnected) {
+            val isTraktActive = isPrimaryProfile && syncProviderState.isTraktActive()
+            val isSimklActive = isPrimaryProfile && syncProviderState.isSimklActive()
+            val isManagedByExternalProvider = isTraktActive || isSimklActive
+            Log.d(
+                "AccountViewModel",
+                "pullRemoteData: isTraktActive=$isTraktActive isSimklActive=$isSimklActive isPrimaryProfile=$isPrimaryProfile"
+            )
+            if (!isManagedByExternalProvider) {
                 watchProgressRepository.isSyncingFromRemote = true
                 val remoteEntries = watchProgressSyncService.pullFromRemote().getOrElse { throw it }
                 Log.d("AccountViewModel", "pullRemoteData: pulled ${remoteEntries.size} watch progress entries")

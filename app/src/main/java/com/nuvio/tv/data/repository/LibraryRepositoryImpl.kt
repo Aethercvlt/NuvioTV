@@ -3,7 +3,7 @@ package com.nuvio.tv.data.repository
 import com.nuvio.tv.core.auth.AuthManager
 import com.nuvio.tv.core.sync.LibrarySyncService
 import com.nuvio.tv.data.local.LibraryPreferences
-import com.nuvio.tv.data.local.TraktAuthDataStore
+import com.nuvio.tv.core.sync.SyncProviderState
 import com.nuvio.tv.domain.model.LibraryEntry
 import com.nuvio.tv.domain.model.LibraryEntryInput
 import com.nuvio.tv.domain.model.LibraryListTab
@@ -33,10 +33,10 @@ import javax.inject.Singleton
 @OptIn(ExperimentalCoroutinesApi::class)
 class LibraryRepositoryImpl @Inject constructor(
     private val libraryPreferences: LibraryPreferences,
-    private val traktAuthDataStore: TraktAuthDataStore,
     private val traktLibraryService: TraktLibraryService,
     private val librarySyncService: LibrarySyncService,
-    private val authManager: AuthManager
+    private val authManager: AuthManager,
+    private val syncProviderState: SyncProviderState
 ) : LibraryRepository {
 
     private val syncScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -55,9 +55,9 @@ class LibraryRepositoryImpl @Inject constructor(
         }
     }
 
-    override val sourceMode: Flow<LibrarySourceMode> = traktAuthDataStore.isEffectivelyAuthenticated
-        .map { isAuthenticated ->
-            if (isAuthenticated) LibrarySourceMode.TRAKT else LibrarySourceMode.LOCAL
+    override val sourceMode: Flow<LibrarySourceMode> = syncProviderState.traktIsActive
+        .map { isTraktActive ->
+            if (isTraktActive) LibrarySourceMode.TRAKT else LibrarySourceMode.LOCAL
         }
         .distinctUntilChanged()
 
@@ -131,7 +131,7 @@ class LibraryRepositoryImpl @Inject constructor(
     }
 
     override suspend fun toggleDefault(item: LibraryEntryInput) {
-        if (traktAuthDataStore.isEffectivelyAuthenticated.first()) {
+        if (syncProviderState.isTraktActive()) {
             traktLibraryService.toggleWatchlist(item)
             return
         }
@@ -146,7 +146,7 @@ class LibraryRepositoryImpl @Inject constructor(
     }
 
     override suspend fun getMembershipSnapshot(item: LibraryEntryInput): ListMembershipSnapshot {
-        if (traktAuthDataStore.isEffectivelyAuthenticated.first()) {
+        if (syncProviderState.isTraktActive()) {
             return traktLibraryService.getMembershipSnapshot(item)
         }
         val inLocal = libraryPreferences.isInLibrary(item.itemId, item.itemType).first()
@@ -154,7 +154,7 @@ class LibraryRepositoryImpl @Inject constructor(
     }
 
     override suspend fun applyMembershipChanges(item: LibraryEntryInput, changes: ListMembershipChanges) {
-        if (traktAuthDataStore.isEffectivelyAuthenticated.first()) {
+        if (syncProviderState.isTraktActive()) {
             traktLibraryService.applyMembershipChanges(item, changes)
             return
         }
@@ -199,13 +199,13 @@ class LibraryRepositoryImpl @Inject constructor(
     }
 
     override suspend fun refreshNow() {
-        if (traktAuthDataStore.isEffectivelyAuthenticated.first()) {
+        if (syncProviderState.isTraktActive()) {
             traktLibraryService.refreshNow()
         }
     }
 
     private suspend fun requireTraktAuth() {
-        if (!traktAuthDataStore.isEffectivelyAuthenticated.first()) {
+        if (!syncProviderState.isTraktActive()) {
             throw IllegalStateException("Trakt authentication required")
         }
     }

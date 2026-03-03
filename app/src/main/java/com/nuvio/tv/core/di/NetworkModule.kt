@@ -7,6 +7,7 @@ import com.nuvio.tv.data.remote.api.AniSkipApi
 import com.nuvio.tv.data.remote.api.ArmApi
 import com.nuvio.tv.data.remote.api.GitHubReleaseApi
 import com.nuvio.tv.data.remote.api.TraktApi
+import com.nuvio.tv.data.remote.api.SimklApi
 import com.nuvio.tv.data.remote.api.TrailerApi
 import com.nuvio.tv.data.remote.api.IntroDbApi
 import com.nuvio.tv.data.remote.api.ImdbTapframeApi
@@ -74,6 +75,23 @@ object NetworkModule {
 
     @Provides
     @Singleton
+    @Named("simkl")
+    fun provideSimklOkHttpClient(
+        okHttpClient: OkHttpClient
+    ): OkHttpClient = okHttpClient.newBuilder()
+        .addInterceptor { chain ->
+            val version = BuildConfig.VERSION_NAME.ifBlank { "dev" }
+            val newRequest = chain.request().newBuilder()
+                .header("Content-Type", "application/json")
+                .header("User-Agent", "NuvioTV/$version")
+                .header("simkl-api-key", BuildConfig.SIMKL_CLIENT_ID)
+                .build()
+            chain.proceed(newRequest)
+        }
+        .build()
+
+    @Provides
+    @Singleton
     fun provideRetrofit(okHttpClient: OkHttpClient, moshi: Moshi): Retrofit =
         Retrofit.Builder()
             .baseUrl("https://placeholder.nuvio.tv/")
@@ -106,6 +124,19 @@ object NetworkModule {
 
     @Provides
     @Singleton
+    @Named("simkl")
+    fun provideSimklRetrofit(
+        @Named("simkl") okHttpClient: OkHttpClient,
+        moshi: Moshi
+    ): Retrofit =
+        Retrofit.Builder()
+            .baseUrl(BuildConfig.SIMKL_API_URL.ifBlank { "https://api.simkl.com/" })
+            .client(okHttpClient)
+            .addConverterFactory(MoshiConverterFactory.create(moshi))
+            .build()
+
+    @Provides
+    @Singleton
     fun provideAddonApi(retrofit: Retrofit): AddonApi =
         retrofit.create(AddonApi::class.java)
 
@@ -118,6 +149,11 @@ object NetworkModule {
     @Singleton
     fun provideTraktApi(@Named("trakt") retrofit: Retrofit): TraktApi =
         retrofit.create(TraktApi::class.java)
+
+    @Provides
+    @Singleton
+    fun provideSimklApi(@Named("simkl") retrofit: Retrofit): SimklApi =
+        retrofit.create(SimklApi::class.java)
 
     @Provides
     @Singleton

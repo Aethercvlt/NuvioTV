@@ -10,6 +10,7 @@ import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
 import com.nuvio.tv.ui.screens.CatalogSeeAllScreen
 import com.nuvio.tv.ui.screens.LayoutSelectionScreen
@@ -22,10 +23,12 @@ import com.nuvio.tv.ui.screens.player.PlayerScreen
 import com.nuvio.tv.ui.screens.plugin.PluginScreen
 import com.nuvio.tv.ui.screens.search.DiscoverScreen
 import com.nuvio.tv.ui.screens.search.SearchScreen
+import com.nuvio.tv.domain.model.SyncProviderType
 import com.nuvio.tv.ui.screens.settings.AboutScreen
 import com.nuvio.tv.ui.screens.settings.LayoutSettingsScreen
 import com.nuvio.tv.ui.screens.settings.PlaybackSettingsScreen
 import com.nuvio.tv.ui.screens.settings.SettingsScreen
+import com.nuvio.tv.ui.screens.settings.SimklScreen
 import com.nuvio.tv.ui.screens.settings.ThemeSettingsScreen
 import com.nuvio.tv.ui.screens.settings.TraktScreen
 import com.nuvio.tv.ui.screens.settings.TmdbSettingsScreen
@@ -581,13 +584,24 @@ fun NuvioNavHost(
         composable(Screen.Settings.route) {
             SettingsScreen(
                 showBuiltInHeader = !hideBuiltInHeaders,
-                onNavigateToTrakt = { navController.navigate(Screen.Trakt.route) },
+                onNavigateToProvider = { provider ->
+                    when (provider) {
+                        SyncProviderType.TRAKT -> navController.navigate(Screen.Trakt.route)
+                        SyncProviderType.SIMKL -> navController.navigate(Screen.Simkl.route)
+                    }
+                },
                 onNavigateToAuthQrSignIn = { navController.navigate(Screen.AuthQrSignIn.route) }
             )
         }
 
         composable(Screen.Trakt.route) {
             TraktScreen(
+                onBackPress = { navController.popBackStack() }
+            )
+        }
+
+        composable(Screen.Simkl.route) {
+            SimklScreen(
                 onBackPress = { navController.popBackStack() }
             )
         }

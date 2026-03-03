@@ -8,6 +8,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -15,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BugReport
@@ -26,6 +28,7 @@ import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Sync
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -47,14 +50,17 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import com.nuvio.tv.BuildConfig
 import com.nuvio.tv.R
+import com.nuvio.tv.domain.model.SyncProviderType
 import com.nuvio.tv.ui.screens.plugin.PluginScreenContent
 import com.nuvio.tv.ui.theme.NuvioColors
+import com.nuvio.tv.ui.theme.NuvioTheme
 import kotlinx.coroutines.delay
 
 internal enum class SettingsCategory {
@@ -63,9 +69,9 @@ internal enum class SettingsCategory {
     APPEARANCE,
     LAYOUT,
     PLUGINS,
+    SYNC,
     INTEGRATION,
     PLAYBACK,
-    TRAKT,
     ABOUT,
     DEBUG
 }
@@ -132,6 +138,13 @@ private fun rememberSettingsSectionSpecs() = listOf(
         destination = SettingsSectionDestination.Inline
     ),
     SettingsSectionSpec(
+        category = SettingsCategory.SYNC,
+        title = stringResource(R.string.settings_sync),
+        icon = Icons.Default.Sync,
+        subtitle = stringResource(R.string.settings_sync_subtitle),
+        destination = SettingsSectionDestination.Inline
+    ),
+    SettingsSectionSpec(
         category = SettingsCategory.INTEGRATION,
         title = stringResource(R.string.settings_integration),
         icon = Icons.Default.Link,
@@ -144,13 +157,6 @@ private fun rememberSettingsSectionSpecs() = listOf(
         icon = Icons.Default.Settings,
         subtitle = stringResource(R.string.settings_playback_subtitle),
         destination = SettingsSectionDestination.Inline
-    ),
-    SettingsSectionSpec(
-        category = SettingsCategory.TRAKT,
-        title = "Trakt",
-        rawIconRes = R.raw.trakt_tv_glyph,
-        subtitle = stringResource(R.string.settings_trakt_subtitle),
-        destination = SettingsSectionDestination.External
     ),
     SettingsSectionSpec(
         category = SettingsCategory.ABOUT,
@@ -171,11 +177,13 @@ private fun rememberSettingsSectionSpecs() = listOf(
 @Composable
 fun SettingsScreen(
     showBuiltInHeader: Boolean = true,
-    onNavigateToTrakt: () -> Unit = {},
+    onNavigateToProvider: (SyncProviderType) -> Unit = {},
     onNavigateToAuthQrSignIn: () -> Unit = {},
-    profileViewModel: ProfileSettingsViewModel = hiltViewModel()
+    profileViewModel: ProfileSettingsViewModel = hiltViewModel(),
+    syncViewModel: SyncSettingsViewModel = hiltViewModel()
 ) {
     val isPrimaryProfileActive by profileViewModel.isPrimaryProfileActive.collectAsStateWithLifecycle()
+    val syncUiState by syncViewModel.uiState.collectAsStateWithLifecycle()
 
     val allSectionSpecs = rememberSettingsSectionSpecs()
     val visibleSections = remember(isPrimaryProfileActive, allSectionSpecs) {
@@ -184,7 +192,7 @@ fun SettingsScreen(
                 SettingsCategory.DEBUG -> BuildConfig.IS_DEBUG_BUILD
                 SettingsCategory.PROFILES -> isPrimaryProfileActive
                 SettingsCategory.ACCOUNT -> isPrimaryProfileActive
-                SettingsCategory.TRAKT -> isPrimaryProfileActive
+                SettingsCategory.SYNC -> isPrimaryProfileActive
                 else -> true
             }
         }
@@ -192,7 +200,11 @@ fun SettingsScreen(
 
     var selectedCategory by remember(visibleSections) {
         mutableStateOf(
-            visibleSections.firstOrNull()?.category ?: SettingsCategory.APPEARANCE
+            if (isPrimaryProfileActive && visibleSections.any { it.category == SettingsCategory.SYNC }) {
+                SettingsCategory.SYNC
+            } else {
+                visibleSections.firstOrNull()?.category ?: SettingsCategory.APPEARANCE
+            }
         )
     }
     val railFocusRequesters = remember(visibleSections) {
@@ -202,6 +214,7 @@ fun SettingsScreen(
             mapOf(
                 SettingsCategory.APPEARANCE to FocusRequester(),
                 SettingsCategory.LAYOUT to FocusRequester(),
+                SettingsCategory.SYNC to FocusRequester(),
                 SettingsCategory.INTEGRATION to FocusRequester(),
                 SettingsCategory.PLAYBACK to FocusRequester(),
                 SettingsCategory.ABOUT to FocusRequester()
@@ -310,7 +323,6 @@ fun SettingsScreen(
                                 if (section.destination == SettingsSectionDestination.External) {
                                     when (section.category) {
                                         SettingsCategory.ACCOUNT -> onNavigateToAuthQrSignIn()
-                                        SettingsCategory.TRAKT -> onNavigateToTrakt()
                                         else -> Unit
                                     }
                                 } else {
@@ -386,12 +398,171 @@ fun SettingsScreen(
                         SettingsCategory.ACCOUNT -> AccountSettingsInline(
                             onNavigateToAuthQrSignIn = onNavigateToAuthQrSignIn
                         )
+                        SettingsCategory.SYNC -> SyncSettingsContent(
+                            uiState = syncUiState,
+                            onProviderSelected = syncViewModel::onProviderSelected,
+                            onManageProvider = onNavigateToProvider,
+                            initialFocusRequester = if (allowDetailAutofocus) {
+                                contentFocusRequesters[SettingsCategory.SYNC]
+                            } else {
+                                null
+                            }
+                        )
                         SettingsCategory.DEBUG -> DebugSettingsContent()
-                        SettingsCategory.TRAKT -> Unit
                     }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun SyncSettingsContent(
+    uiState: SyncSettingsUiState,
+    onProviderSelected: (SyncProviderType) -> Unit,
+    onManageProvider: (SyncProviderType) -> Unit,
+    initialFocusRequester: FocusRequester?
+) {
+    Column(
+        modifier = Modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        SettingsDetailHeader(
+            title = stringResource(R.string.settings_sync),
+            subtitle = stringResource(R.string.settings_sync_subtitle)
+        )
+
+        SettingsGroupCard(
+            modifier = Modifier.fillMaxWidth(),
+            title = stringResource(R.string.settings_sync_active_title),
+            subtitle = stringResource(R.string.settings_sync_active_subtitle)
+        ) {
+            LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                items(SyncProviderType.values().toList(), key = { it.name }) { provider ->
+                    SyncProviderChip(
+                        provider = provider,
+                        isSelected = uiState.selectedProvider == provider,
+                        onClick = { onProviderSelected(provider) },
+                        modifier = if (initialFocusRequester != null && provider == uiState.selectedProvider) {
+                            Modifier.focusRequester(initialFocusRequester)
+                        } else {
+                            Modifier
+                        }
+                    )
+                }
+            }
+        }
+
+        SettingsGroupCard(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f),
+            title = stringResource(R.string.settings_sync_connections_title),
+            subtitle = stringResource(R.string.settings_sync_connections_subtitle)
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                SyncProviderCard(
+                    provider = SyncProviderType.TRAKT,
+                    connectionState = uiState.traktState,
+                    onManage = onManageProvider
+                )
+                SyncProviderCard(
+                    provider = SyncProviderType.SIMKL,
+                    connectionState = uiState.simklState,
+                    onManage = onManageProvider
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ColumnScope.SyncProviderCard(
+    provider: SyncProviderType,
+    connectionState: SyncProviderConnectionState,
+    onManage: (SyncProviderType) -> Unit
+) {
+    SettingsActionRow(
+        title = provider.displayName,
+        subtitle = when (provider) {
+            SyncProviderType.TRAKT -> stringResource(R.string.settings_sync_provider_trakt_description)
+            SyncProviderType.SIMKL -> stringResource(R.string.settings_sync_provider_simkl_description)
+        },
+        value = connectionState.username?.let {
+            stringResource(R.string.settings_sync_status_connected, it)
+        } ?: if (connectionState.isConnected) {
+            stringResource(R.string.settings_sync_status_connected_generic)
+        } else {
+            stringResource(R.string.settings_sync_status_disconnected)
+        },
+        onClick = { onManage(provider) }
+    )
+}
+
+@Composable
+private fun SyncProviderChip(
+    provider: SyncProviderType,
+    isSelected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    SettingsChoiceChip(
+        label = provider.displayName,
+        selected = isSelected,
+        onClick = onClick,
+        modifier = modifier
+    )
+}
+
+private val previewDisconnectedState = SyncSettingsUiState(
+    selectedProvider = SyncProviderType.TRAKT,
+    traktState = SyncProviderConnectionState(
+        isConnected = false,
+        username = null
+    ),
+    simklState = SyncProviderConnectionState(
+        isConnected = false,
+        username = null
+    )
+)
+
+private val previewConnectedState = SyncSettingsUiState(
+    selectedProvider = SyncProviderType.SIMKL,
+    traktState = SyncProviderConnectionState(
+        isConnected = true,
+        username = "traktFan"
+    ),
+    simklState = SyncProviderConnectionState(
+        isConnected = true,
+        username = "cascade"
+    )
+)
+
+@Preview(name = "Sync settings – disconnected", widthDp = 1280, heightDp = 720)
+@Composable
+private fun SyncSettingsContentPreviewDisconnected() {
+    NuvioTheme {
+        SyncSettingsContent(
+            uiState = previewDisconnectedState,
+            onProviderSelected = {},
+            onManageProvider = {},
+            initialFocusRequester = null
+        )
+    }
+}
+
+@Preview(name = "Sync settings – connected", widthDp = 1280, heightDp = 720)
+@Composable
+private fun SyncSettingsContentPreviewConnected() {
+    NuvioTheme {
+        SyncSettingsContent(
+            uiState = previewConnectedState,
+            onProviderSelected = {},
+            onManageProvider = {},
+            initialFocusRequester = null
+        )
     }
 }
 

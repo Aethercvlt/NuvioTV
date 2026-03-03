@@ -3,13 +3,11 @@ package com.nuvio.tv.core.sync
 import android.util.Log
 import com.nuvio.tv.core.auth.AuthManager
 import com.nuvio.tv.core.profile.ProfileManager
-import com.nuvio.tv.data.local.TraktAuthDataStore
 import com.nuvio.tv.data.local.WatchedItemsPreferences
 import com.nuvio.tv.data.remote.supabase.SupabaseWatchedItem
 import com.nuvio.tv.domain.model.WatchedItem
 import io.github.jan.supabase.postgrest.Postgrest
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.addJsonObject
@@ -26,8 +24,8 @@ class WatchedItemsSyncService @Inject constructor(
     private val authManager: AuthManager,
     private val postgrest: Postgrest,
     private val watchedItemsPreferences: WatchedItemsPreferences,
-    private val traktAuthDataStore: TraktAuthDataStore,
-    private val profileManager: ProfileManager
+    private val profileManager: ProfileManager,
+    private val syncProviderState: SyncProviderState
 ) {
     private suspend fun <T> withJwtRefreshRetry(block: suspend () -> T): T {
         return try {
@@ -40,8 +38,8 @@ class WatchedItemsSyncService @Inject constructor(
 
     suspend fun pushToRemote(): Result<Unit> = withContext(Dispatchers.IO) {
         try {
-            if (traktAuthDataStore.isAuthenticated.first()) {
-                Log.d(TAG, "Trakt connected, skipping watched items push")
+            if (syncProviderState.isTraktActive()) {
+                Log.d(TAG, "Trakt selected & active, skipping watched items push")
                 return@withContext Result.success(Unit)
             }
 
@@ -80,8 +78,8 @@ class WatchedItemsSyncService @Inject constructor(
 
     suspend fun pullFromRemote(): Result<List<WatchedItem>> = withContext(Dispatchers.IO) {
         try {
-            if (traktAuthDataStore.isAuthenticated.first()) {
-                Log.d(TAG, "Trakt connected, skipping watched items pull")
+            if (syncProviderState.isTraktActive()) {
+                Log.d(TAG, "Trakt selected & active, skipping watched items pull")
                 return@withContext Result.success(emptyList())
             }
 

@@ -3,13 +3,11 @@ package com.nuvio.tv.core.sync
 import android.util.Log
 import com.nuvio.tv.core.auth.AuthManager
 import com.nuvio.tv.core.profile.ProfileManager
-import com.nuvio.tv.data.local.TraktAuthDataStore
 import com.nuvio.tv.data.local.WatchProgressPreferences
 import com.nuvio.tv.data.remote.supabase.SupabaseWatchProgress
 import com.nuvio.tv.domain.model.WatchProgress
 import io.github.jan.supabase.postgrest.Postgrest
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonObject
@@ -26,8 +24,8 @@ class WatchProgressSyncService @Inject constructor(
     private val authManager: AuthManager,
     private val postgrest: Postgrest,
     private val watchProgressPreferences: WatchProgressPreferences,
-    private val traktAuthDataStore: TraktAuthDataStore,
-    private val profileManager: ProfileManager
+    private val profileManager: ProfileManager,
+    private val syncProviderState: SyncProviderState
 ) {
     private suspend fun <T> withJwtRefreshRetry(block: suspend () -> T): T {
         return try {
@@ -40,8 +38,8 @@ class WatchProgressSyncService @Inject constructor(
 
     suspend fun deleteFromRemote(keys: Collection<String>): Result<Unit> = withContext(Dispatchers.IO) {
         try {
-            if (traktAuthDataStore.isAuthenticated.first()) {
-                Log.d(TAG, "Trakt connected, skipping watch progress delete")
+            if (syncProviderState.isTraktActive()) {
+                Log.d(TAG, "Trakt selected & active, skipping watch progress delete")
                 return@withContext Result.success(Unit)
             }
 
@@ -77,8 +75,8 @@ class WatchProgressSyncService @Inject constructor(
      */
     suspend fun pushToRemote(): Result<Unit> = withContext(Dispatchers.IO) {
         try {
-            if (traktAuthDataStore.isAuthenticated.first()) {
-                Log.d(TAG, "Trakt connected, skipping watch progress push")
+            if (syncProviderState.isTraktActive()) {
+                Log.d(TAG, "Trakt selected & active, skipping watch progress push")
                 return@withContext Result.success(Unit)
             }
 
@@ -123,8 +121,8 @@ class WatchProgressSyncService @Inject constructor(
     
     suspend fun pushSingleToRemote(key: String, progress: WatchProgress): Result<Unit> = withContext(Dispatchers.IO) {
         try {
-            if (traktAuthDataStore.isAuthenticated.first()) {
-                Log.d(TAG, "Trakt connected, skipping single watch progress push")
+            if (syncProviderState.isTraktActive()) {
+                Log.d(TAG, "Trakt selected & active, skipping single watch progress push")
                 return@withContext Result.success(Unit)
             }
 
@@ -166,8 +164,8 @@ class WatchProgressSyncService @Inject constructor(
      */
     suspend fun pullFromRemote(): Result<List<Pair<String, WatchProgress>>> = withContext(Dispatchers.IO) {
         try {
-            if (traktAuthDataStore.isAuthenticated.first()) {
-                Log.d(TAG, "Trakt connected, skipping watch progress pull")
+            if (syncProviderState.isTraktActive()) {
+                Log.d(TAG, "Trakt selected & active, skipping watch progress pull")
                 return@withContext Result.success(emptyList())
             }
 
