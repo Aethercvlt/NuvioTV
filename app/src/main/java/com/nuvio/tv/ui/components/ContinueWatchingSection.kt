@@ -52,7 +52,6 @@ import androidx.tv.material3.Button
 import androidx.tv.material3.ButtonDefaults
 import androidx.tv.material3.Text
 import androidx.compose.ui.window.Dialog
-import com.nuvio.tv.BuildConfig
 import com.nuvio.tv.ui.screens.home.ContinueWatchingItem
 import com.nuvio.tv.ui.theme.NuvioColors
 import com.nuvio.tv.ui.theme.NuvioTheme
@@ -74,13 +73,13 @@ fun ContinueWatchingSection(
     onItemClick: (ContinueWatchingItem) -> Unit,
     onDetailsClick: (ContinueWatchingItem) -> Unit = onItemClick,
     onRemoveItem: (ContinueWatchingItem) -> Unit,
+    onStartFromBeginning: (ContinueWatchingItem) -> Unit = {},
     modifier: Modifier = Modifier,
     focusedItemIndex: Int = -1,
     onItemFocused: (itemIndex: Int) -> Unit = {}
 ) {
     if (items.isEmpty()) return
 
-    val itemFocusRequester = remember { FocusRequester() }
     val focusRequesters = remember(items.size) { List(items.size) { FocusRequester() } }
     var lastFocusedIndex by remember { mutableIntStateOf(-1) }
     var lastRequestedFocusIndex by remember { mutableIntStateOf(-1) }
@@ -90,13 +89,13 @@ fun ContinueWatchingSection(
     val listState = rememberLazyListState()
 
     // Restore focus to specific item if requested
-    LaunchedEffect(focusedItemIndex, items) {
+    LaunchedEffect(focusedItemIndex) {
         if (focusedItemIndex >= 0 && focusedItemIndex < items.size) {
             if (lastRequestedFocusIndex == focusedItemIndex) return@LaunchedEffect
             var focused = false
             for (attempt in 0 until 3) {
                 withFrameNanos { }
-                focused = runCatching { itemFocusRequester.requestFocus() }.isSuccess
+                focused = runCatching { focusRequesters[focusedItemIndex].requestFocus() }.isSuccess
                 if (focused) break
             }
             if (focused) {
@@ -125,7 +124,11 @@ fun ContinueWatchingSection(
         LazyRow(
             modifier = Modifier
                 .fillMaxWidth()
-                .focusRestorer(),
+                .focusRestorer {
+                        val idx = if (lastFocusedIndex >= 0 && lastFocusedIndex < focusRequesters.size)
+                            lastFocusedIndex else 0
+                        focusRequesters.getOrNull(idx) ?: FocusRequester.Default
+                    },
             contentPadding = PaddingValues(horizontal = 48.dp),
             horizontalArrangement = Arrangement.spacedBy(16.dp),
             state = listState
@@ -142,8 +145,7 @@ fun ContinueWatchingSection(
                 }
             ) { index, progress ->
                 val focusModifier = when {
-                    pendingFocusIndex == index && index < focusRequesters.size -> Modifier.focusRequester(focusRequesters[index])
-                    index == focusedItemIndex -> Modifier.focusRequester(itemFocusRequester)
+                    index < focusRequesters.size -> Modifier.focusRequester(focusRequesters[index])
                     else -> Modifier
                 }
 
@@ -177,6 +179,10 @@ fun ContinueWatchingSection(
             },
             onDetails = {
                 onDetailsClick(menuItem)
+                optionsItem = null
+            },
+            onStartFromBeginning = {
+                onStartFromBeginning(menuItem)
                 optionsItem = null
             }
         )
@@ -219,6 +225,9 @@ fun ContinueWatchingCard(
     val strUpcoming = stringResource(R.string.cw_upcoming)
     val strNextUp = stringResource(R.string.cw_next_up)
     val strResume = stringResource(R.string.cw_resume)
+    val strHoursMinLeft = stringResource(R.string.cw_hours_min_left)
+    val strMinLeft = stringResource(R.string.cw_min_left)
+    val strAlmostDone = stringResource(R.string.cw_almost_done)
     val nextUpBadgeText = nextUp?.let { info ->
         if (!info.hasAired) {
             info.airDateLabel?.let { strAirsDate } ?: strUpcoming
@@ -229,21 +238,13 @@ fun ContinueWatchingCard(
     val remainingText = progress?.let {
         remember(it.position, it.duration, it.progressPercent) {
             when {
-                it.duration > 0L -> formatRemainingTime(it.remainingTime)
+                it.duration > 0L -> formatRemainingTime(it.remainingTime, strHoursMinLeft, strMinLeft, strAlmostDone)
                 it.progressPercent != null -> "${it.progressPercent.toInt().coerceIn(0, 100)}% watched"
                 else -> strResume
             }
         }
     }
-    val watchedPercentText = progress?.let {
-        val dbPercent = it.progressPercent ?: (it.progressPercentage * 100f)
-        "${dbPercent.coerceIn(0f, 100f).roundToInt()}%"
-    }
-    val badgeText = if (BuildConfig.IS_DEBUG_BUILD && watchedPercentText != null) {
-        remainingText?.let { "$it · $watchedPercentText" } ?: watchedPercentText
-    } else {
-        remainingText ?: nextUpBadgeText ?: strNextUp
-    }
+    val badgeText = remainingText ?: nextUpBadgeText ?: strNextUp
     val progressFraction = progress?.progressPercentage ?: 0f
     val imageModel = when {
         nextUp != null && !nextUp.hasAired -> firstNonBlank(
@@ -275,10 +276,11 @@ fun ContinueWatchingCard(
     val requestHeightPx = remember(imageHeight, density) {
         with(density) { imageHeight.roundToPx() }
     }
-    val imageRequest = remember(context, imageModel, requestWidthPx, requestHeightPx) {
+    val imageRequest = remember(imageModel, requestWidthPx, requestHeightPx) {
         ImageRequest.Builder(context)
             .data(imageModel)
             .crossfade(false)
+            .memoryCacheKey("${imageModel}_${requestWidthPx}x${requestHeightPx}")
             .size(width = requestWidthPx, height = requestHeightPx)
             .build()
     }
@@ -323,6 +325,7 @@ fun ContinueWatchingCard(
                     }
                 }
                 if (native.action == AndroidKeyEvent.ACTION_UP && longPressTriggered && isSelectKey(native.keyCode)) {
+                    longPressTriggered = false
                     return@onPreviewKeyEvent true
                 }
                 false
@@ -417,21 +420,25 @@ fun ContinueWatchingCard(
                         color = NuvioColors.TextPrimary
                     )
                 }
-            }
 
-            if (progress != null) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(4.dp)
-                        .background(NuvioColors.SurfaceVariant)
-                ) {
+                if (progress != null) {
                     Box(
                         modifier = Modifier
-                            .fillMaxWidth(progressFraction)
-                            .height(4.dp)
-                            .background(NuvioColors.Primary)
-                    )
+                            .align(Alignment.BottomStart)
+                            .padding(horizontal = 10.dp, vertical = 4.dp)
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(1.5.dp))
+                            .height(3.dp)
+                            .background(Color.Black.copy(alpha = 0.3f))
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth(progressFraction)
+                                .clip(RoundedCornerShape(1.5.dp))
+                                .height(3.dp)
+                                .background(NuvioColors.Primary)
+                        )
+                    }
                 }
             }
         }
@@ -444,7 +451,8 @@ fun ContinueWatchingOptionsDialog(
     item: ContinueWatchingItem,
     onDismiss: () -> Unit,
     onRemove: () -> Unit,
-    onDetails: () -> Unit
+    onDetails: () -> Unit,
+    onStartFromBeginning: () -> Unit = {}
 ) {
     val title = when (item) {
         is ContinueWatchingItem.InProgress -> item.progress.name
@@ -475,6 +483,19 @@ fun ContinueWatchingOptionsDialog(
             Text(stringResource(R.string.cw_action_go_to_details))
         }
 
+        if (item is ContinueWatchingItem.InProgress) {
+            Button(
+                onClick = onStartFromBeginning,
+                colors = ButtonDefaults.colors(
+                    containerColor = NuvioColors.BackgroundCard,
+                    contentColor = NuvioColors.TextPrimary
+                ),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(stringResource(R.string.cw_action_start_from_beginning))
+            }
+        }
+
         Button(
             onClick = onRemove,
             colors = ButtonDefaults.colors(
@@ -498,14 +519,19 @@ private fun firstNonBlank(vararg candidates: String?): String? {
     return candidates.firstOrNull { !it.isNullOrBlank() }?.trim()
 }
 
-internal fun formatRemainingTime(remainingMs: Long): String {
+internal fun formatRemainingTime(
+    remainingMs: Long,
+    strHoursMinLeft: String,
+    strMinLeft: String,
+    strAlmostDone: String
+): String {
     val totalMinutes = TimeUnit.MILLISECONDS.toMinutes(remainingMs)
     val hours = totalMinutes / 60
     val minutes = totalMinutes % 60
 
     return when {
-        hours > 0 -> "${hours}h ${minutes}m left"
-        minutes > 0 -> "${minutes}m left"
-        else -> "Almost done"
+        hours > 0 -> strHoursMinLeft.format(hours, minutes)
+        minutes > 0 -> strMinLeft.format(minutes)
+        else -> strAlmostDone
     }
 }

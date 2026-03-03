@@ -180,6 +180,14 @@ class StreamScreenViewModel @Inject constructor(
                 directAutoPlayModeInitializedForSession = true
             }
 
+            val rawRegex = playerSettings.streamAutoPlayRegex.orEmpty().trim()
+            val isEffectivelyEmptyRegex = rawRegex.isEmpty() || !rawRegex.any { it.isLetterOrDigit() }
+
+            if (playerSettings.streamAutoPlayMode == StreamAutoPlayMode.REGEX_MATCH && isEffectivelyEmptyRegex) {
+                directAutoPlayFlowEnabledForSession = false
+                autoPlayHandledForSession = true
+            }
+
             val directFlowActive = directAutoPlayFlowEnabledForSession
             var resolvedAutoPlayTarget = false
 
@@ -618,7 +626,10 @@ class StreamScreenViewModel @Inject constructor(
             episodeTitle = episodeName,
             bingeGroup = stream.behaviorHints?.bingeGroup,
             rememberedAudioLanguage = null,
-            rememberedAudioName = null
+            rememberedAudioName = null,
+            filename = stream.behaviorHints?.filename,
+            videoHash = stream.behaviorHints?.videoHash,
+            videoSize = stream.behaviorHints?.videoSize
         )
 
         val url = playbackInfo.url
@@ -667,5 +678,8 @@ data class StreamPlaybackInfo(
     val episodeTitle: String?,
     val bingeGroup: String?,
     val rememberedAudioLanguage: String?,
-    val rememberedAudioName: String?
+    val rememberedAudioName: String?,
+    val filename: String? = null,
+    val videoHash: String? = null,
+    val videoSize: Long? = null
 )

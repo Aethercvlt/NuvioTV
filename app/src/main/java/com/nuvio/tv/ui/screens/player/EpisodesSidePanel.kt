@@ -126,7 +126,7 @@ internal fun EpisodesSidePanel(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = if (uiState.showEpisodeStreams) "Streams" else "Episodes",
+                        text = if (uiState.showEpisodeStreams) stringResource(R.string.episodes_panel_streams_title) else stringResource(R.string.episodes_panel_title),
                         style = MaterialTheme.typography.headlineSmall,
                         color = NuvioColors.TextPrimary
                     )
@@ -235,7 +235,7 @@ private fun EpisodeStreamsView(
 
         uiState.episodeStreamsError != null -> {
             Text(
-                text = uiState.episodeStreamsError ?: "Failed to load streams",
+                text = uiState.episodeStreamsError ?: stringResource(R.string.panel_failed_load_streams),
                 style = MaterialTheme.typography.bodyLarge,
                 color = Color.White.copy(alpha = 0.85f)
             )
@@ -320,7 +320,7 @@ private fun EpisodesListView(
 
         uiState.episodesError != null -> {
             Text(
-                text = uiState.episodesError ?: "Failed to load episodes",
+                text = uiState.episodesError ?: stringResource(R.string.panel_failed_load_episodes),
                 style = MaterialTheme.typography.bodyLarge,
                 color = Color.White.copy(alpha = 0.85f)
             )
@@ -434,7 +434,7 @@ private fun EpisodesSeasonTabs(
                 scale = CardDefaults.scale(focusedScale = 1.0f)
             ) {
                 Text(
-                    text = if (season == 0) "Specials" else "Season $season",
+                    text = if (season == 0) stringResource(R.string.episodes_specials) else stringResource(R.string.episodes_season, season),
                     style = MaterialTheme.typography.labelLarge,
                     color = when {
                         isSelected -> Color.Black
@@ -563,7 +563,7 @@ private fun EpisodeItem(
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 Text(
-                    text = episode.title.ifBlank { "Episode" },
+                    text = episode.title.ifBlank { stringResource(R.string.episodes_episode) },
                     style = MaterialTheme.typography.titleMedium,
                     color = NuvioColors.TextPrimary,
                     maxLines = 1,

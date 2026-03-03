@@ -114,6 +114,7 @@ data class PlayerUiState(
     val detectedFrameRateRaw: Float = 0f,
     val detectedFrameRateSource: FrameRateSource? = null,
     val detectedFrameRate: Float = 0f,
+    val afrProbeRunning: Boolean = false,
     val frameRateMatchingMode: FrameRateMatchingMode = FrameRateMatchingMode.OFF,
     val displayModeInfo: DisplayModeInfo? = null,
     val showDisplayModeInfo: Boolean = false,
@@ -130,6 +131,7 @@ data class TrackInfo(
     val trackId: String? = null,
     val codec: String? = null,
     val channelCount: Int? = null,
+    val isForced: Boolean = false,
     val isSelected: Boolean = false
 )
 

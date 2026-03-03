@@ -158,6 +158,47 @@ fun NuvioNavHost(
                     }
                     navController.navigate(route)
                 },
+                onContinueWatchingStartFromBeginning = { item ->
+                    val route = when (item) {
+                        is ContinueWatchingItem.InProgress -> Screen.Stream.createRoute(
+                            videoId = item.progress.videoId,
+                            contentType = item.progress.contentType,
+                            title = item.progress.name,
+                            poster = item.progress.poster,
+                            backdrop = item.progress.backdrop,
+                            logo = item.progress.logo,
+                            season = item.progress.season,
+                            episode = item.progress.episode,
+                            episodeName = item.progress.episodeTitle,
+                            genres = null,
+                            year = null,
+                            contentId = item.progress.contentId,
+                            contentName = item.progress.name,
+                            runtime = null,
+                            returnToDetailOnBack = item.progress.contentType.equals("series", ignoreCase = true),
+                            startFromBeginning = true
+                        )
+                        is ContinueWatchingItem.NextUp -> Screen.Stream.createRoute(
+                            videoId = item.info.videoId,
+                            contentType = item.info.contentType,
+                            title = item.info.name,
+                            poster = item.info.poster,
+                            backdrop = item.info.backdrop,
+                            logo = item.info.logo,
+                            season = item.info.season,
+                            episode = item.info.episode,
+                            episodeName = item.info.episodeTitle,
+                            genres = null,
+                            year = null,
+                            contentId = item.info.contentId,
+                            contentName = item.info.name,
+                            runtime = null,
+                            returnToDetailOnBack = item.info.contentType.equals("series", ignoreCase = true),
+                            startFromBeginning = true
+                        )
+                    }
+                    navController.navigate(route)
+                },
                 onNavigateToCatalogSeeAll = { catalogId, addonId, type ->
                     navController.navigate(Screen.CatalogSeeAll.createRoute(catalogId, addonId, type))
                 }
@@ -290,12 +331,20 @@ fun NuvioNavHost(
                     type = NavType.StringType
                     nullable = true
                     defaultValue = "false"
+                },
+                navArgument("startFromBeginning") {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = "false"
                 }
             )
         ) { backStackEntry ->
             val streamArgs = backStackEntry.arguments
             val returnToDetailOnBack = streamArgs
                 ?.getString("returnToDetailOnBack")
+                ?.toBooleanStrictOrNull() == true
+            val startFromBeginning = streamArgs
+                ?.getString("startFromBeginning")
                 ?.toBooleanStrictOrNull() == true
             StreamScreen(
                 onBackPress = {
@@ -345,7 +394,11 @@ fun NuvioNavHost(
                                 rememberedAudioLanguage = playbackInfo.rememberedAudioLanguage,
                                 rememberedAudioName = playbackInfo.rememberedAudioName,
                                 autoPlayNav = false,
-                                returnToDetailOnBack = returnToDetailOnBack
+                                returnToDetailOnBack = returnToDetailOnBack,
+                                filename = playbackInfo.filename,
+                                videoHash = playbackInfo.videoHash,
+                                videoSize = playbackInfo.videoSize,
+                                startFromBeginning = startFromBeginning
                             )
                         )
                     }
@@ -373,7 +426,11 @@ fun NuvioNavHost(
                                 rememberedAudioLanguage = playbackInfo.rememberedAudioLanguage,
                                 rememberedAudioName = playbackInfo.rememberedAudioName,
                                 autoPlayNav = true,
-                                returnToDetailOnBack = returnToDetailOnBack
+                                returnToDetailOnBack = returnToDetailOnBack,
+                                filename = playbackInfo.filename,
+                                videoHash = playbackInfo.videoHash,
+                                videoSize = playbackInfo.videoSize,
+                                startFromBeginning = startFromBeginning
                             )
                         ) {
                             popUpTo(Screen.Stream.route) { inclusive = true }
@@ -474,6 +531,26 @@ fun NuvioNavHost(
                     defaultValue = "false"
                 },
                 navArgument("returnToDetailOnBack") {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = "false"
+                },
+                navArgument("filename") {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                },
+                navArgument("videoHash") {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                },
+                navArgument("videoSize") {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                },
+                navArgument("startFromBeginning") {
                     type = NavType.StringType
                     nullable = true
                     defaultValue = "false"

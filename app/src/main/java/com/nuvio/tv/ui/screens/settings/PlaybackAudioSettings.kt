@@ -8,8 +8,10 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -51,12 +53,14 @@ import com.nuvio.tv.data.local.AVAILABLE_SUBTITLE_LANGUAGES
 import com.nuvio.tv.data.local.AudioLanguageOption
 import com.nuvio.tv.data.local.PlayerSettings
 import com.nuvio.tv.data.local.TrailerSettings
+import com.nuvio.tv.ui.components.NuvioDialog
 import com.nuvio.tv.ui.theme.NuvioColors
 
 internal fun LazyListScope.trailerAndAudioSettingsItems(
     playerSettings: PlayerSettings,
     trailerSettings: TrailerSettings,
     onShowAudioLanguageDialog: () -> Unit,
+    onShowSecondaryAudioLanguageDialog: () -> Unit,
     onShowDecoderPriorityDialog: () -> Unit,
     onSetTrailerEnabled: (Boolean) -> Unit,
     onSetTrailerDelaySeconds: (Int) -> Unit,
@@ -142,6 +146,21 @@ internal fun LazyListScope.trailerAndAudioSettingsItems(
         )
     }
 
+    item(key = "audio_secondary_preferred_language") {
+        val secondaryAudioLangName = playerSettings.secondaryPreferredAudioLanguage?.let { code ->
+            AVAILABLE_SUBTITLE_LANGUAGES.find { it.code == code }?.name ?: code
+        } ?: stringResource(R.string.sub_not_set)
+
+        NavigationSettingsItem(
+            icon = Icons.Default.Language,
+            title = stringResource(R.string.sub_secondary_lang),
+            subtitle = secondaryAudioLangName,
+            onClick = onShowSecondaryAudioLanguageDialog,
+            onFocused = onItemFocused,
+            enabled = enabled
+        )
+    }
+
     item(key = "audio_skip_silence") {
         ToggleSettingsItem(
             icon = Icons.Default.Speed,
@@ -219,12 +238,16 @@ internal fun LazyListScope.trailerAndAudioSettingsItems(
 @Composable
 internal fun AudioSettingsDialogs(
     showAudioLanguageDialog: Boolean,
+    showSecondaryAudioLanguageDialog: Boolean,
     showDecoderPriorityDialog: Boolean,
     selectedLanguage: String,
+    selectedSecondaryLanguage: String?,
     selectedPriority: Int,
     onSetPreferredAudioLanguage: (String) -> Unit,
+    onSetSecondaryPreferredAudioLanguage: (String?) -> Unit,
     onSetDecoderPriority: (Int) -> Unit,
     onDismissAudioLanguageDialog: () -> Unit,
+    onDismissSecondaryAudioLanguageDialog: () -> Unit,
     onDismissDecoderPriorityDialog: () -> Unit
 ) {
     if (showAudioLanguageDialog) {
@@ -235,6 +258,19 @@ internal fun AudioSettingsDialogs(
                 onDismissAudioLanguageDialog()
             },
             onDismiss = onDismissAudioLanguageDialog
+        )
+    }
+
+    if (showSecondaryAudioLanguageDialog) {
+        LanguageSelectionDialog(
+            title = stringResource(R.string.sub_secondary_lang),
+            selectedLanguage = selectedSecondaryLanguage,
+            showNoneOption = true,
+            onLanguageSelected = {
+                onSetSecondaryPreferredAudioLanguage(it)
+                onDismissSecondaryAudioLanguageDialog()
+            },
+            onDismiss = onDismissSecondaryAudioLanguageDialog
         )
     }
 
@@ -267,77 +303,63 @@ private fun AudioLanguageSelectionDialog(
         focusRequester.requestFocus()
     }
 
-    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
+    NuvioDialog(
+        onDismiss = onDismiss,
+        title = stringResource(R.string.audio_preferred_lang),
+        width = 400.dp,
+        suppressFirstKeyUp = false
+    ) {
         Box(
             modifier = Modifier
-                .clip(RoundedCornerShape(16.dp))
-                .background(NuvioColors.BackgroundCard)
+                .fillMaxWidth()
+                .height(320.dp)
         ) {
-            Column(
-                modifier = Modifier
-                    .width(400.dp)
-                    .padding(24.dp)
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 4.dp)
             ) {
-                Text(
-                    text = stringResource(R.string.audio_preferred_lang),
-                    style = MaterialTheme.typography.headlineSmall,
-                    color = NuvioColors.TextPrimary
-                )
+                items(
+                    count = allOptions.size,
+                    key = { index -> allOptions[index].first }
+                ) { index ->
+                    val (code, name) = allOptions[index]
+                    val isSelected = code == selectedLanguage
+                    var isFocused by remember { mutableStateOf(false) }
 
-                Spacer(modifier = Modifier.height(16.dp))
-
-                LazyColumn(
-                    modifier = Modifier.height(400.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    items(
-                        count = allOptions.size,
-                        key = { index -> allOptions[index].first }
-                    ) { index ->
-                        val (code, name) = allOptions[index]
-                        val isSelected = code == selectedLanguage
-                        var isFocused by remember { mutableStateOf(false) }
-
-                        Card(
-                            onClick = { onLanguageSelected(code) },
+                    Card(
+                        onClick = { onLanguageSelected(code) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .then(if (index == 0) Modifier.focusRequester(focusRequester) else Modifier)
+                            .onFocusChanged { isFocused = it.isFocused },
+                        colors = CardDefaults.colors(
+                            containerColor = if (isSelected) NuvioColors.FocusBackground else NuvioColors.BackgroundCard,
+                            focusedContainerColor = NuvioColors.FocusBackground
+                        ),
+                        shape = CardDefaults.shape(shape = RoundedCornerShape(10.dp)),
+                        scale = CardDefaults.scale(focusedScale = 1f)
+                    ) {
+                        Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .then(if (index == 0) Modifier.focusRequester(focusRequester) else Modifier)
-                                .onFocusChanged { isFocused = it.isFocused },
-                            colors = CardDefaults.colors(
-                                containerColor = if (isSelected) NuvioColors.Primary.copy(alpha = 0.2f) else NuvioColors.BackgroundElevated,
-                                focusedContainerColor = NuvioColors.FocusBackground
-                            ),
-                            border = CardDefaults.border(
-                                focusedBorder = Border(
-                                    border = androidx.compose.foundation.BorderStroke(2.dp, NuvioColors.FocusRing),
-                                    shape = RoundedCornerShape(8.dp)
-                                )
-                            ),
-                            shape = CardDefaults.shape(shape = RoundedCornerShape(8.dp)),
-                            scale = CardDefaults.scale(focusedScale = 1.02f)
+                                .padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(16.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = name,
-                                    style = MaterialTheme.typography.bodyLarge,
-                                    color = if (isSelected) NuvioColors.Primary else NuvioColors.TextPrimary,
-                                    modifier = Modifier.weight(1f)
+                            Text(
+                                text = name,
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = if (isSelected) NuvioColors.Primary else NuvioColors.TextPrimary,
+                                modifier = Modifier.weight(1f)
+                            )
+                            if (isSelected) {
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Icon(
+                                    imageVector = Icons.Default.Check,
+                                    contentDescription = stringResource(R.string.cd_selected),
+                                    tint = NuvioColors.Primary,
+                                    modifier = Modifier.size(20.dp)
                                 )
-                                if (isSelected) {
-                                    Spacer(modifier = Modifier.width(12.dp))
-                                    Icon(
-                                        imageVector = Icons.Default.Check,
-                                        contentDescription = stringResource(R.string.cd_selected),
-                                        tint = NuvioColors.Primary,
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                }
                             }
                         }
                     }
@@ -364,86 +386,68 @@ private fun DecoderPriorityDialog(
         focusRequester.requestFocus()
     }
 
-    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
+    NuvioDialog(
+        onDismiss = onDismiss,
+        title = stringResource(R.string.audio_decoder_priority),
+        subtitle = stringResource(R.string.audio_decoder_controls),
+        width = 420.dp,
+        suppressFirstKeyUp = false
+    ) {
         Box(
             modifier = Modifier
-                .clip(RoundedCornerShape(16.dp))
-                .background(NuvioColors.BackgroundCard)
+                .fillMaxWidth()
+                .heightIn(max = 320.dp)
         ) {
-            Column(
-                modifier = Modifier
-                    .width(420.dp)
-                    .padding(24.dp)
+            LazyColumn(
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 4.dp)
             ) {
-                Text(
-                    text = stringResource(R.string.audio_decoder_priority),
-                    style = MaterialTheme.typography.headlineSmall,
-                    color = NuvioColors.TextPrimary
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = stringResource(R.string.audio_decoder_controls),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = NuvioColors.TextSecondary
-                )
-                Spacer(modifier = Modifier.height(16.dp))
+                items(
+                    count = options.size,
+                    key = { index -> options[index].first.toString() }
+                ) { index ->
+                    val (priority, title, description) = options[index]
+                    val isSelected = priority == selectedPriority
 
-                LazyColumn(
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    items(
-                        count = options.size,
-                        key = { index -> options[index].first.toString() }
-                    ) { index ->
-                        val (priority, title, description) = options[index]
-                        val isSelected = priority == selectedPriority
-
-                        Card(
-                            onClick = { onPrioritySelected(priority) },
+                    Card(
+                        onClick = { onPrioritySelected(priority) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .then(if (index == 0) Modifier.focusRequester(focusRequester) else Modifier),
+                        colors = CardDefaults.colors(
+                            containerColor = if (isSelected) NuvioColors.FocusBackground else NuvioColors.BackgroundCard,
+                            focusedContainerColor = NuvioColors.FocusBackground
+                        ),
+                        shape = CardDefaults.shape(shape = RoundedCornerShape(10.dp)),
+                        scale = CardDefaults.scale(focusedScale = 1f)
+                    ) {
+                        Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .then(if (index == 0) Modifier.focusRequester(focusRequester) else Modifier),
-                            colors = CardDefaults.colors(
-                                containerColor = if (isSelected) NuvioColors.Primary.copy(alpha = 0.2f) else NuvioColors.BackgroundElevated,
-                                focusedContainerColor = NuvioColors.FocusBackground
-                            ),
-                            border = CardDefaults.border(
-                                focusedBorder = Border(
-                                    border = androidx.compose.foundation.BorderStroke(2.dp, NuvioColors.FocusRing),
-                                    shape = RoundedCornerShape(8.dp)
-                                )
-                            ),
-                            shape = CardDefaults.shape(shape = RoundedCornerShape(8.dp)),
-                            scale = CardDefaults.scale(focusedScale = 1.02f)
+                                .padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(16.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = title,
-                                        color = if (isSelected) NuvioColors.Primary else NuvioColors.TextPrimary,
-                                        style = MaterialTheme.typography.bodyLarge
-                                    )
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    Text(
-                                        text = description,
-                                        color = NuvioColors.TextSecondary,
-                                        style = MaterialTheme.typography.bodySmall
-                                    )
-                                }
-                                if (isSelected) {
-                                    Spacer(modifier = Modifier.width(12.dp))
-                                    Icon(
-                                        imageVector = Icons.Default.Check,
-                                        contentDescription = stringResource(R.string.cd_selected),
-                                        tint = NuvioColors.Primary,
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                }
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = title,
+                                    color = if (isSelected) NuvioColors.Primary else NuvioColors.TextPrimary,
+                                    style = MaterialTheme.typography.bodyLarge
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = description,
+                                    color = NuvioColors.TextSecondary,
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                            }
+                            if (isSelected) {
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Icon(
+                                    imageVector = Icons.Default.Check,
+                                    contentDescription = stringResource(R.string.cd_selected),
+                                    tint = NuvioColors.Primary,
+                                    modifier = Modifier.size(20.dp)
+                                )
                             }
                         }
                     }

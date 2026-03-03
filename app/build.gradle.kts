@@ -1,4 +1,4 @@
-plugins {
+﻿plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
@@ -6,7 +6,6 @@ plugins {
     alias(libs.plugins.hilt)
     alias(libs.plugins.ksp)
     alias(libs.plugins.kotlin.serialization)
-    id("io.sentry.android.gradle") version "6.0.0"
 }
 
 import java.util.Properties
@@ -33,8 +32,8 @@ android {
         applicationId = "com.nuvio.tv"
         minSdk = 26
         targetSdk = 36
-        versionCode = 22
-        versionName = "0.4.4-beta"
+        versionCode = 27
+        versionName = "0.4.9-beta"
 
         buildConfigField("String", "PARENTAL_GUIDE_API_URL", "\"${localProperties.getProperty("PARENTAL_GUIDE_API_URL", "")}\"")
         buildConfigField("String", "INTRODB_API_URL", "\"${localProperties.getProperty("INTRODB_API_URL", "")}\"")
@@ -47,6 +46,7 @@ android {
         buildConfigField("String", "SIMKL_CLIENT_ID", "\"${localProperties.getProperty("SIMKL_CLIENT_ID", "")}\"")
         buildConfigField("String", "SIMKL_CLIENT_SECRET", "\"${localProperties.getProperty("SIMKL_CLIENT_SECRET", "")}\"")
         buildConfigField("String", "SIMKL_API_URL", "\"${localProperties.getProperty("SIMKL_API_URL", "https://api.simkl.com/")}\"")
+        buildConfigField("String", "TRAKT_REDIRECT_URI", "\"${localProperties.getProperty("TRAKT_REDIRECT_URI", "urn:ietf:wg:oauth:2.0:oob")}\"")
         buildConfigField("String", "TV_LOGIN_WEB_BASE_URL", "\"${localProperties.getProperty("TV_LOGIN_WEB_BASE_URL", "https://app.nuvio.tv/tv-login")}\"")
 
         // In-app updater (GitHub Releases)
@@ -128,6 +128,32 @@ android {
         compose = true
         buildConfig = true
     }
+
+    sourceSets {
+        getByName("main") {
+            // Keep local jniLibs disabled; use dependency-provided native libs only.
+            jniLibs.srcDirs("src/main/_jni_disabled")
+        }
+    }
+
+    packaging {
+        jniLibs {
+            // Keep one consistent native set across dependencies.
+            pickFirsts += listOf(
+                "lib/*/libc++_shared.so",
+                "lib/*/libavcodec.so",
+                "lib/*/libavutil.so",
+                "lib/*/libswscale.so",
+                "lib/*/libswresample.so"
+            )
+        }
+    }
+}
+
+androidComponents {
+    onVariants(selector().withBuildType("debug")) { variant ->
+        variant.applicationId.set("com.nuviodebug.com")
+    }
 }
 
 composeCompiler {
@@ -144,9 +170,9 @@ configurations.all {
 }
 
 dependencies {
-    val composeBom = platform("androidx.compose:compose-bom:2025.02.00")
+    val composeBom = platform("androidx.compose:compose-bom:2026.01.01")
 
-    baselineProfile(project(":benchmark"))
+    // baselineProfile(project(":benchmark"))  // TODO: create benchmark module later
     implementation(libs.androidx.core.ktx)
     implementation("androidx.core:core-splashscreen:1.0.1")
     implementation(libs.androidx.appcompat)
@@ -220,6 +246,8 @@ dependencies {
 
     // libass-android for ASS/SSA subtitle support (from Maven Central)
     implementation("io.github.peerless2012:ass-media:0.4.0-beta01")
+    implementation("io.github.anilbeesetti:nextlib-mediainfo:1.9.1-0.11.0")
+    implementation("io.github.anilbeesetti:nextlib-media3ext:1.9.1-0.11.0")
     implementation("dev.chrisbanes.haze:haze-android:0.7.3") {
         exclude(group = "org.jetbrains.compose.ui")
         exclude(group = "org.jetbrains.compose.foundation")
@@ -247,6 +275,10 @@ dependencies {
 
     // Kotlinx Serialization
     implementation(libs.kotlinx.serialization.json)
+
+    // Performance profiling
+    implementation("androidx.metrics:metrics-performance:1.0.0-beta01")  // JankStats
+    implementation("androidx.compose.runtime:runtime-tracing")           // Compose function names in Perfetto
 
     // Bundle real crypto-js (JS) for QuickJS plugins
     implementation("org.webjars.npm:crypto-js:4.2.0")

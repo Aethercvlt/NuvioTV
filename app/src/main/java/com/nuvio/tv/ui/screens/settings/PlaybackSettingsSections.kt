@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -52,10 +53,12 @@ import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import com.nuvio.tv.data.local.AddonSubtitleStartupMode
 import com.nuvio.tv.data.local.FrameRateMatchingMode
 import com.nuvio.tv.data.local.PlayerPreference
 import com.nuvio.tv.data.local.PlayerSettings
 import com.nuvio.tv.data.local.TrailerSettings
+import com.nuvio.tv.ui.components.NuvioDialog
 import com.nuvio.tv.ui.theme.NuvioColors
 
 private enum class PlaybackSection {
@@ -89,10 +92,12 @@ internal fun PlaybackSettingsSections(
     trailerSettings: TrailerSettings,
     onShowPlayerPreferenceDialog: () -> Unit,
     onShowAudioLanguageDialog: () -> Unit,
+    onShowSecondaryAudioLanguageDialog: () -> Unit,
     onShowDecoderPriorityDialog: () -> Unit,
     onShowLanguageDialog: () -> Unit,
     onShowSecondaryLanguageDialog: () -> Unit,
     onShowSubtitleOrganizationDialog: () -> Unit,
+    onShowSubtitleStartupModeDialog: () -> Unit,
     onShowTextColorDialog: () -> Unit,
     onShowBackgroundColorDialog: () -> Unit,
     onShowOutlineColorDialog: () -> Unit,
@@ -113,6 +118,7 @@ internal fun PlaybackSettingsSections(
     onSetOsdClockEnabled: (Boolean) -> Unit,
     onSetSkipIntroEnabled: (Boolean) -> Unit,
     onSetFrameRateMatchingMode: (FrameRateMatchingMode) -> Unit,
+    onSetResolutionMatchingEnabled: (Boolean) -> Unit,
     onSetTrailerEnabled: (Boolean) -> Unit,
     onSetTrailerDelaySeconds: (Int) -> Unit,
     onSetSkipSilence: (Boolean) -> Unit,
@@ -230,7 +236,7 @@ internal fun PlaybackSettingsSections(
             item(key = "general_osd_clock") {
                 ToggleSettingsItem(
                     icon = Icons.Default.Timer,
-                    title = "OSD Clock",
+                    title = stringResource(R.string.playback_osd_clock),
                     subtitle = stringResource(R.string.playback_show_clock_sub),
                     isChecked = playerSettings.osdClockEnabled,
                     onCheckedChange = onSetOsdClockEnabled,
@@ -267,7 +273,9 @@ internal fun PlaybackSettingsSections(
                 item(key = "general_afr_options") {
                     FrameRateMatchingModeOptions(
                         selectedMode = playerSettings.frameRateMatchingMode,
+                        resolutionMatchingEnabled = playerSettings.resolutionMatchingEnabled,
                         onSelect = onSetFrameRateMatchingMode,
+                        onSetResolutionMatchingEnabled = onSetResolutionMatchingEnabled,
                         onFocused = { focusedSection = PlaybackSection.GENERAL },
                         enabled = !generalUi.isExternalPlayer
                     )
@@ -325,6 +333,7 @@ internal fun PlaybackSettingsSections(
                 playerSettings = playerSettings,
                 trailerSettings = trailerSettings,
                 onShowAudioLanguageDialog = onShowAudioLanguageDialog,
+                onShowSecondaryAudioLanguageDialog = onShowSecondaryAudioLanguageDialog,
                 onShowDecoderPriorityDialog = onShowDecoderPriorityDialog,
                 onSetTrailerEnabled = onSetTrailerEnabled,
                 onSetTrailerDelaySeconds = onSetTrailerDelaySeconds,
@@ -350,6 +359,7 @@ internal fun PlaybackSettingsSections(
                 onShowLanguageDialog = onShowLanguageDialog,
                 onShowSecondaryLanguageDialog = onShowSecondaryLanguageDialog,
                 onShowSubtitleOrganizationDialog = onShowSubtitleOrganizationDialog,
+                onShowSubtitleStartupModeDialog = onShowSubtitleStartupModeDialog,
                 onShowTextColorDialog = onShowTextColorDialog,
                 onShowBackgroundColorDialog = onShowBackgroundColorDialog,
                 onShowOutlineColorDialog = onShowOutlineColorDialog,
@@ -428,7 +438,9 @@ private fun PlaybackSectionHeader(
 @Composable
 private fun FrameRateMatchingModeOptions(
     selectedMode: FrameRateMatchingMode,
+    resolutionMatchingEnabled: Boolean,
     onSelect: (FrameRateMatchingMode) -> Unit,
+    onSetResolutionMatchingEnabled: (Boolean) -> Unit,
     onFocused: () -> Unit,
     enabled: Boolean
 ) {
@@ -463,6 +475,18 @@ private fun FrameRateMatchingModeOptions(
             onFocused = onFocused,
             enabled = enabled
         )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        ToggleSettingsItem(
+            icon = Icons.Default.Image,
+            title = stringResource(R.string.playback_resolution_matching),
+            subtitle = stringResource(R.string.playback_resolution_matching_sub),
+            isChecked = resolutionMatchingEnabled,
+            onCheckedChange = onSetResolutionMatchingEnabled,
+            onFocused = onFocused,
+            enabled = enabled
+        )
     }
 }
 
@@ -475,10 +499,12 @@ internal fun PlaybackSettingsDialogsHost(
     showLanguageDialog: Boolean,
     showSecondaryLanguageDialog: Boolean,
     showSubtitleOrganizationDialog: Boolean,
+    showSubtitleStartupModeDialog: Boolean,
     showTextColorDialog: Boolean,
     showBackgroundColorDialog: Boolean,
     showOutlineColorDialog: Boolean,
     showAudioLanguageDialog: Boolean,
+    showSecondaryAudioLanguageDialog: Boolean,
     showDecoderPriorityDialog: Boolean,
     showStreamAutoPlayModeDialog: Boolean,
     showStreamAutoPlaySourceDialog: Boolean,
@@ -492,10 +518,12 @@ internal fun PlaybackSettingsDialogsHost(
     onSetSubtitlePreferredLanguage: (String?) -> Unit,
     onSetSubtitleSecondaryLanguage: (String?) -> Unit,
     onSetSubtitleOrganizationMode: (com.nuvio.tv.data.local.SubtitleOrganizationMode) -> Unit,
+    onSetAddonSubtitleStartupMode: (AddonSubtitleStartupMode) -> Unit,
     onSetSubtitleTextColor: (Color) -> Unit,
     onSetSubtitleBackgroundColor: (Color) -> Unit,
     onSetSubtitleOutlineColor: (Color) -> Unit,
     onSetPreferredAudioLanguage: (String) -> Unit,
+    onSetSecondaryPreferredAudioLanguage: (String?) -> Unit,
     onSetDecoderPriority: (Int) -> Unit,
     onSetStreamAutoPlayMode: (com.nuvio.tv.data.local.StreamAutoPlayMode) -> Unit,
     onSetStreamAutoPlaySource: (com.nuvio.tv.data.local.StreamAutoPlaySource) -> Unit,
@@ -507,10 +535,12 @@ internal fun PlaybackSettingsDialogsHost(
     onDismissLanguageDialog: () -> Unit,
     onDismissSecondaryLanguageDialog: () -> Unit,
     onDismissSubtitleOrganizationDialog: () -> Unit,
+    onDismissSubtitleStartupModeDialog: () -> Unit,
     onDismissTextColorDialog: () -> Unit,
     onDismissBackgroundColorDialog: () -> Unit,
     onDismissOutlineColorDialog: () -> Unit,
     onDismissAudioLanguageDialog: () -> Unit,
+    onDismissSecondaryAudioLanguageDialog: () -> Unit,
     onDismissDecoderPriorityDialog: () -> Unit,
     onDismissStreamAutoPlayModeDialog: () -> Unit,
     onDismissStreamAutoPlaySourceDialog: () -> Unit,
@@ -535,6 +565,7 @@ internal fun PlaybackSettingsDialogsHost(
         showLanguageDialog = showLanguageDialog,
         showSecondaryLanguageDialog = showSecondaryLanguageDialog,
         showSubtitleOrganizationDialog = showSubtitleOrganizationDialog,
+        showSubtitleStartupModeDialog = showSubtitleStartupModeDialog,
         showTextColorDialog = showTextColorDialog,
         showBackgroundColorDialog = showBackgroundColorDialog,
         showOutlineColorDialog = showOutlineColorDialog,
@@ -542,12 +573,14 @@ internal fun PlaybackSettingsDialogsHost(
         onSetPreferredLanguage = onSetSubtitlePreferredLanguage,
         onSetSecondaryLanguage = onSetSubtitleSecondaryLanguage,
         onSetSubtitleOrganizationMode = onSetSubtitleOrganizationMode,
+        onSetAddonSubtitleStartupMode = onSetAddonSubtitleStartupMode,
         onSetTextColor = onSetSubtitleTextColor,
         onSetBackgroundColor = onSetSubtitleBackgroundColor,
         onSetOutlineColor = onSetSubtitleOutlineColor,
         onDismissLanguageDialog = onDismissLanguageDialog,
         onDismissSecondaryLanguageDialog = onDismissSecondaryLanguageDialog,
         onDismissSubtitleOrganizationDialog = onDismissSubtitleOrganizationDialog,
+        onDismissSubtitleStartupModeDialog = onDismissSubtitleStartupModeDialog,
         onDismissTextColorDialog = onDismissTextColorDialog,
         onDismissBackgroundColorDialog = onDismissBackgroundColorDialog,
         onDismissOutlineColorDialog = onDismissOutlineColorDialog
@@ -555,12 +588,16 @@ internal fun PlaybackSettingsDialogsHost(
 
     AudioSettingsDialogs(
         showAudioLanguageDialog = showAudioLanguageDialog,
+        showSecondaryAudioLanguageDialog = showSecondaryAudioLanguageDialog,
         showDecoderPriorityDialog = showDecoderPriorityDialog,
         selectedLanguage = playerSettings.preferredAudioLanguage,
+        selectedSecondaryLanguage = playerSettings.secondaryPreferredAudioLanguage,
         selectedPriority = playerSettings.decoderPriority,
         onSetPreferredAudioLanguage = onSetPreferredAudioLanguage,
+        onSetSecondaryPreferredAudioLanguage = onSetSecondaryPreferredAudioLanguage,
         onSetDecoderPriority = onSetDecoderPriority,
         onDismissAudioLanguageDialog = onDismissAudioLanguageDialog,
+        onDismissSecondaryAudioLanguageDialog = onDismissSecondaryAudioLanguageDialog,
         onDismissDecoderPriorityDialog = onDismissDecoderPriorityDialog
     )
 
@@ -610,80 +647,67 @@ private fun PlayerPreferenceDialog(
         Triple(PlayerPreference.ASK_EVERY_TIME, stringResource(R.string.playback_player_ask), stringResource(R.string.playback_player_ask_desc))
     )
 
-    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
+    NuvioDialog(
+        onDismiss = onDismiss,
+        title = stringResource(R.string.playback_player),
+        width = 420.dp,
+        suppressFirstKeyUp = false
+    ) {
         Box(
             modifier = Modifier
-                .clip(RoundedCornerShape(16.dp))
-                .background(NuvioColors.BackgroundCard)
+                .fillMaxWidth()
+                .heightIn(max = 320.dp)
         ) {
-            Column(
-                modifier = Modifier
-                    .width(420.dp)
-                    .padding(24.dp)
+            LazyColumn(
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                contentPadding = PaddingValues(vertical = 4.dp)
             ) {
-                Text(
-                    text = stringResource(R.string.playback_player),
-                    style = MaterialTheme.typography.headlineSmall,
-                    color = NuvioColors.TextPrimary
-                )
-                Spacer(modifier = Modifier.height(16.dp))
+                items(
+                    count = options.size,
+                    key = { index -> options[index].first.name }
+                ) { index ->
+                    val (preference, title, description) = options[index]
+                    val isSelected = preference == currentPreference
 
-                LazyColumn(
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    items(
-                        count = options.size,
-                        key = { index -> options[index].first.name }
-                    ) { index ->
-                        val (preference, title, description) = options[index]
-                        val isSelected = preference == currentPreference
-
-                        Card(
-                            onClick = { onPreferenceSelected(preference) },
+                    Card(
+                        onClick = { onPreferenceSelected(preference) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .then(if (index == 0) Modifier.focusRequester(focusRequester) else Modifier),
+                        colors = CardDefaults.colors(
+                            containerColor = if (isSelected) NuvioColors.FocusBackground else NuvioColors.BackgroundCard,
+                            focusedContainerColor = NuvioColors.FocusBackground
+                        ),
+                        shape = CardDefaults.shape(shape = RoundedCornerShape(10.dp)),
+                        scale = CardDefaults.scale(focusedScale = 1f)
+                    ) {
+                        Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .then(if (index == 0) Modifier.focusRequester(focusRequester) else Modifier),
-                            colors = CardDefaults.colors(
-                                containerColor = if (isSelected) NuvioColors.Primary.copy(alpha = 0.2f) else NuvioColors.BackgroundElevated,
-                                focusedContainerColor = NuvioColors.FocusBackground
-                            ),
-                            border = CardDefaults.border(
-                                focusedBorder = Border(
-                                    border = BorderStroke(2.dp, NuvioColors.FocusRing),
-                                    shape = RoundedCornerShape(8.dp)
-                                )
-                            ),
-                            shape = CardDefaults.shape(shape = RoundedCornerShape(8.dp)),
-                            scale = CardDefaults.scale(focusedScale = 1.02f)
+                                .padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(16.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = title,
-                                        color = if (isSelected) NuvioColors.Primary else NuvioColors.TextPrimary,
-                                        style = MaterialTheme.typography.bodyLarge
-                                    )
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    Text(
-                                        text = description,
-                                        color = NuvioColors.TextSecondary,
-                                        style = MaterialTheme.typography.bodySmall
-                                    )
-                                }
-                                if (isSelected) {
-                                    Spacer(modifier = Modifier.width(12.dp))
-                                    Icon(
-                                        imageVector = Icons.Default.Check,
-                                        contentDescription = stringResource(R.string.cd_selected),
-                                        tint = NuvioColors.Primary,
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                }
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = title,
+                                    color = if (isSelected) NuvioColors.Primary else NuvioColors.TextPrimary,
+                                    style = MaterialTheme.typography.bodyLarge
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = description,
+                                    color = NuvioColors.TextSecondary,
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                            }
+                            if (isSelected) {
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Icon(
+                                    imageVector = Icons.Default.Check,
+                                    contentDescription = stringResource(R.string.cd_selected),
+                                    tint = NuvioColors.Primary,
+                                    modifier = Modifier.size(20.dp)
+                                )
                             }
                         }
                     }

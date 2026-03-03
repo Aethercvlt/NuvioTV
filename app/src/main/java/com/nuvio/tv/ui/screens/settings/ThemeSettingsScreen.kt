@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
@@ -54,10 +55,12 @@ import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.nuvio.tv.R
+import com.nuvio.tv.domain.model.AppFont
 import com.nuvio.tv.domain.model.AppTheme
 import com.nuvio.tv.ui.components.NuvioDialog
 import com.nuvio.tv.ui.theme.NuvioColors
 import com.nuvio.tv.ui.theme.ThemeColors
+import com.nuvio.tv.ui.theme.getFontFamily
 import kotlinx.coroutines.delay
 
 @Composable
@@ -81,6 +84,7 @@ fun ThemeSettingsContent(
     initialFocusRequester: FocusRequester? = null
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    var showFontDialog by remember { mutableStateOf(false) }
     var showLanguageDialog by remember { mutableStateOf(false) }
     var pendingLanguageRestart by remember { mutableStateOf(false) }
     val context = LocalContext.current
@@ -90,7 +94,20 @@ fun ThemeSettingsContent(
         listOf(
             null to strLanguageSystem,
             "en" to "English",
-            "pl" to "Polski"
+            "es" to "Español",
+            "es-419" to "Español (Latinoamérica)",
+            "hu" to "Magyar",
+            "fr" to "Français",
+            "it" to "Italiano",
+            "pl" to "Polski",
+            "pt-PT" to "Português (Portugal)",
+            "pt-BR" to "Português (Brasil)",
+            "tr" to "Türkçe",
+            "se" to "Svenska",
+            "sk" to "Slovensky",
+            "sl" to "Slovenščina",
+            "ro" to "Română",
+            "ja" to "日本語"
         )
     }
     var selectedTag by remember {
@@ -155,11 +172,71 @@ fun ThemeSettingsContent(
             modifier = Modifier.fillMaxWidth()
         ) {
             SettingsActionRow(
+                title = stringResource(R.string.appearance_font),
+                subtitle = stringResource(R.string.appearance_font_subtitle),
+                value = uiState.selectedFont.displayName,
+                onClick = { showFontDialog = true }
+            )
+        }
+
+        SettingsGroupCard(
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            SettingsActionRow(
                 title = stringResource(R.string.appearance_language),
                 subtitle = stringResource(R.string.appearance_language_subtitle),
                 value = currentLocaleName,
                 onClick = { showLanguageDialog = true }
             )
+        }
+    }
+
+    if (showFontDialog) {
+        val fontFocusRequester = remember { FocusRequester() }
+        LaunchedEffect(Unit) { fontFocusRequester.requestFocus() }
+        NuvioDialog(
+            onDismiss = { showFontDialog = false },
+            title = stringResource(R.string.appearance_font_dialog_title),
+            width = 400.dp,
+            suppressFirstKeyUp = false
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(280.dp)
+            ) {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    contentPadding = PaddingValues(vertical = 2.dp)
+                ) {
+                    val fonts = uiState.availableFonts
+                    for (index in fonts.indices) {
+                        val font = fonts[index]
+                        item {
+                            val isSelected = font == uiState.selectedFont
+                            Button(
+                                onClick = {
+                                    viewModel.onEvent(ThemeSettingsEvent.SelectFont(font))
+                                    showFontDialog = false
+                                },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .then(if (index == 0) Modifier.focusRequester(fontFocusRequester) else Modifier),
+                                colors = ButtonDefaults.colors(
+                                    containerColor = if (isSelected) NuvioColors.FocusBackground else NuvioColors.BackgroundCard,
+                                    contentColor = NuvioColors.TextPrimary
+                                )
+                            ) {
+                                Text(
+                                    text = font.displayName,
+                                    fontFamily = getFontFamily(font)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -172,28 +249,43 @@ fun ThemeSettingsContent(
             width = 400.dp,
             suppressFirstKeyUp = false
         ) {
-            supportedLocales.forEachIndexed { index, (tag, name) ->
-                val isSelected = tag == selectedTag
-                Button(
-                    onClick = {
-                        val previousTag = selectedTag
-                        context.getSharedPreferences("app_locale", android.content.Context.MODE_PRIVATE)
-                            .edit().putString("locale_tag", tag ?: "").apply()
-                        selectedTag = tag
-                        showLanguageDialog = false
-                        if (previousTag != tag) {
-                            pendingLanguageRestart = true
-                        }
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .then(if (index == 0) Modifier.focusRequester(firstFocusRequester) else Modifier),
-                    colors = ButtonDefaults.colors(
-                        containerColor = if (isSelected) NuvioColors.FocusBackground else NuvioColors.BackgroundCard,
-                        contentColor = NuvioColors.TextPrimary
-                    )
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(280.dp)
+            ) {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    contentPadding = PaddingValues(vertical = 2.dp)
                 ) {
-                    Text(name)
+                    for (index in supportedLocales.indices) {
+                        val (tag, name) = supportedLocales[index]
+                        item {
+                            val isSelected = tag == selectedTag
+                            Button(
+                                onClick = {
+                                    val previousTag = selectedTag
+                                    context.getSharedPreferences("app_locale", android.content.Context.MODE_PRIVATE)
+                                        .edit().putString("locale_tag", tag ?: "").apply()
+                                    selectedTag = tag
+                                    showLanguageDialog = false
+                                    if (previousTag != tag) {
+                                        pendingLanguageRestart = true
+                                    }
+                                },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .then(if (index == 0) Modifier.focusRequester(firstFocusRequester) else Modifier),
+                                colors = ButtonDefaults.colors(
+                                    containerColor = if (isSelected) NuvioColors.FocusBackground else NuvioColors.BackgroundCard,
+                                    contentColor = NuvioColors.TextPrimary
+                                )
+                            ) {
+                                Text(name)
+                            }
+                        }
+                    }
                 }
             }
         }

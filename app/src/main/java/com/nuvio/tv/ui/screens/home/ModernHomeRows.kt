@@ -7,7 +7,6 @@ import androidx.compose.animation.core.AnimationSpec
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.BringIntoViewSpec
 import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
 import androidx.compose.foundation.layout.Arrangement
@@ -40,6 +39,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusRestorer
@@ -75,6 +75,7 @@ import com.nuvio.tv.domain.model.MetaPreview
 import com.nuvio.tv.ui.components.ContinueWatchingCard
 import com.nuvio.tv.ui.components.MonochromePosterPlaceholder
 import com.nuvio.tv.ui.components.TrailerPlayer
+import com.nuvio.tv.LocalSidebarExpanded
 import com.nuvio.tv.ui.theme.NuvioColors
 import kotlin.math.abs
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -123,8 +124,10 @@ private fun ModernCatalogRowItem(
     trailerPlaybackTarget: FocusedPosterTrailerPlaybackTarget,
     expandedCatalogFocusKey: String?,
     expandedTrailerPreviewUrl: String?,
+    expandedTrailerPreviewAudioUrl: String?,
     isWatched: Boolean,
     onFocused: () -> Unit,
+    onItemFocus: (MetaPreview) -> Unit,
     onCatalogSelectionFocused: (FocusedCatalogSelection) -> Unit,
     onNavigateToDetail: (String, String, String) -> Unit,
     onLongPress: () -> Unit,
@@ -139,12 +142,19 @@ private fun ModernCatalogRowItem(
         effectiveExpandEnabled &&
             expandedCatalogFocusKey == focusKey &&
             !suppressCardExpansionForHeroTrailer
+    val isSidebarExpanded = LocalSidebarExpanded.current
     val playTrailerInExpandedCard =
         effectiveAutoplayEnabled &&
+            !isSidebarExpanded &&
             trailerPlaybackTarget == FocusedPosterTrailerPlaybackTarget.EXPANDED_CARD &&
             isBackdropExpanded
     val trailerPreviewUrl = if (playTrailerInExpandedCard) {
         expandedTrailerPreviewUrl
+    } else {
+        null
+    }
+    val trailerPreviewAudioUrl = if (playTrailerInExpandedCard) {
+        expandedTrailerPreviewAudioUrl
     } else {
         null
     }
@@ -161,10 +171,12 @@ private fun ModernCatalogRowItem(
         playTrailerInExpandedCard = playTrailerInExpandedCard,
         focusedPosterBackdropTrailerMuted = focusedPosterBackdropTrailerMuted,
         trailerPreviewUrl = trailerPreviewUrl,
+        trailerPreviewAudioUrl = trailerPreviewAudioUrl,
         isWatched = isWatched,
         focusRequester = requester,
         onFocused = {
             onFocused()
+            item.metaPreview?.let { onItemFocus(it) }
             onCatalogSelectionFocused(
                 FocusedCatalogSelection(
                     focusKey = focusKey,
@@ -192,11 +204,7 @@ internal fun ModernRowSection(
     rowTitleBottom: Dp,
     defaultBringIntoViewSpec: BringIntoViewSpec,
     focusStateCatalogRowScrollStates: Map<String, Int>,
-    rowListStates: MutableMap<String, LazyListState>,
-    focusedItemByRow: MutableMap<String, Int>,
-    itemFocusRequesters: MutableMap<String, MutableMap<String, FocusRequester>>,
-    loadMoreRequestedTotals: MutableMap<String, Int>,
-    requesterFor: (String, String) -> FocusRequester,
+    uiCaches: ModernHomeUiCaches,
     pendingRowFocusKey: String?,
     pendingRowFocusIndex: Int?,
     pendingRowFocusNonce: Int,
@@ -211,6 +219,7 @@ internal fun ModernRowSection(
     trailerPlaybackTarget: FocusedPosterTrailerPlaybackTarget,
     expandedCatalogFocusKey: String?,
     expandedTrailerPreviewUrl: String?,
+    expandedTrailerPreviewAudioUrl: String?,
     modernCatalogCardWidth: Dp,
     modernCatalogCardHeight: Dp,
     continueWatchingCardWidth: Dp,
@@ -219,12 +228,18 @@ internal fun ModernRowSection(
     onContinueWatchingOptions: (ContinueWatchingItem) -> Unit,
     isCatalogItemWatched: (MetaPreview) -> Boolean,
     onCatalogItemLongPress: (MetaPreview, String) -> Unit,
+    onItemFocus: (MetaPreview) -> Unit,
     onCatalogSelectionFocused: (FocusedCatalogSelection) -> Unit,
     onNavigateToDetail: (String, String, String) -> Unit,
     onLoadMoreCatalog: (String, String, String) -> Unit,
     onBackdropInteraction: () -> Unit,
     onExpandedCatalogFocusKeyChange: (String?) -> Unit
 ) {
+    val focusedItemByRow = uiCaches.focusedItemByRow
+    val itemFocusRequesters = uiCaches.itemFocusRequesters
+    val rowListStates = uiCaches.rowListStates
+    val loadMoreRequestedTotals = uiCaches.loadMoreRequestedTotals
+
     Column {
         Text(
             text = row.title,
@@ -256,7 +271,7 @@ internal fun ModernRowSection(
             val targetIndex = (pendingRowFocusIndex ?: 0)
                 .coerceIn(0, (row.items.size - 1).coerceAtLeast(0))
             val targetItemKey = row.items.getOrNull(targetIndex)?.key ?: return@LaunchedEffect
-            val requester = requesterFor(row.key, targetItemKey)
+            val requester = uiCaches.requesterFor(row.key, targetItemKey)
             var didFocus = false
             var didScrollToTarget = false
             repeat(20) {
@@ -279,7 +294,7 @@ internal fun ModernRowSection(
                 val fallbackItemKey = row.items.getOrNull(fallbackIndex)?.key
                 didFocus = runCatching {
                     if (fallbackItemKey != null) {
-                        requesterFor(row.key, fallbackItemKey).requestFocus()
+                        uiCaches.requesterFor(row.key, fallbackItemKey).requestFocus()
                     }
                     true
                 }.getOrDefault(false)
@@ -329,7 +344,7 @@ internal fun ModernRowSection(
         val density = LocalDensity.current
         val rowStartPadding = 52.dp
         val horizontalBringIntoViewSpec = remember(density, defaultBringIntoViewSpec) {
-            val parentStartOffsetPx = with(density) { 28.dp.roundToPx() }
+            val parentStartOffsetPx = with(density) { rowStartPadding.roundToPx() }
             object : BringIntoViewSpec {
                 @Suppress("DEPRECATION")
                 override val scrollAnimationSpec: AnimationSpec<Float> =
@@ -360,7 +375,8 @@ internal fun ModernRowSection(
         CompositionLocalProvider(LocalBringIntoViewSpec provides horizontalBringIntoViewSpec) {
             LazyRow(
                 state = rowListState,
-                modifier = Modifier.focusRestorer {
+                modifier = Modifier
+                    .focusRestorer {
                     val rememberedIndex = (focusedItemByRow[row.key] ?: 0)
                         .coerceIn(0, (row.items.size - 1).coerceAtLeast(0))
                     val fallbackIndex = rowListState.firstVisibleItemIndex
@@ -370,7 +386,10 @@ internal fun ModernRowSection(
                     } else {
                         fallbackIndex
                     }
-                    val itemKey = row.items.getOrNull(restoreIndex)?.key ?: row.items.first().key
+                    val visibleIndices = rowListState.layoutInfo.visibleItemsInfo.map { it.index }.toSet()
+                    val safeIndex = if (restoreIndex in visibleIndices) restoreIndex else
+                        visibleIndices.minByOrNull { kotlin.math.abs(it - restoreIndex) } ?: fallbackIndex
+                    val itemKey = row.items.getOrNull(safeIndex)?.key ?: row.items.first().key
                     itemFocusRequesters[row.key]?.get(itemKey) ?: FocusRequester.Default
                 },
                 contentPadding = PaddingValues(horizontal = rowStartPadding),
@@ -386,7 +405,7 @@ internal fun ModernRowSection(
                         }
                     }
                 ) { index, item ->
-                    val requester = requesterFor(row.key, item.key)
+                    val requester = uiCaches.requesterFor(row.key, item.key)
                     val isContinueWatchingRow = row.key == "continue_watching"
                     val onFocused = {
                         onRowItemFocused(row.key, index, isContinueWatchingRow)
@@ -421,8 +440,10 @@ internal fun ModernRowSection(
                                 trailerPlaybackTarget = trailerPlaybackTarget,
                                 expandedCatalogFocusKey = expandedCatalogFocusKey,
                                 expandedTrailerPreviewUrl = expandedTrailerPreviewUrl,
+                                expandedTrailerPreviewAudioUrl = expandedTrailerPreviewAudioUrl,
                                 isWatched = item.metaPreview?.let(isCatalogItemWatched) == true,
                                 onFocused = onFocused,
+                                onItemFocus = onItemFocus,
                                 onCatalogSelectionFocused = onCatalogSelectionFocused,
                                 onNavigateToDetail = onNavigateToDetail,
                                 onLongPress = {
@@ -456,6 +477,7 @@ private fun ModernCarouselCard(
     playTrailerInExpandedCard: Boolean,
     focusedPosterBackdropTrailerMuted: Boolean,
     trailerPreviewUrl: String?,
+    trailerPreviewAudioUrl: String?,
     isWatched: Boolean,
     focusRequester: FocusRequester,
     onFocused: () -> Unit,
@@ -524,9 +546,13 @@ private fun ModernCarouselCard(
                 .build()
         }
     }
+    var landscapeLogoLoadFailed by remember(item.heroPreview.logo) { mutableStateOf(false) }
     val shouldPlayTrailerInCard = playTrailerInExpandedCard && !trailerPreviewUrl.isNullOrBlank()
     val hasImage = !imageUrl.isNullOrBlank()
-    val hasLandscapeLogo = useLandscapePosters && !item.heroPreview.logo.isNullOrBlank()
+    val hasLandscapeLogo =
+        useLandscapePosters &&
+            !item.heroPreview.logo.isNullOrBlank() &&
+            !landscapeLogoLoadFailed
     var isFocused by remember { mutableStateOf(false) }
     var longPressTriggered by remember { mutableStateOf(false) }
     val watchedIconEndPadding by animateDpAsState(
@@ -591,6 +617,7 @@ private fun ModernCarouselCard(
                         longPressTriggered &&
                         isSelectKey(native.keyCode)
                     ) {
+                        longPressTriggered = false
                         return@onPreviewKeyEvent true
                     }
                     false
@@ -606,38 +633,50 @@ private fun ModernCarouselCard(
             scale = CardDefaults.scale(focusedScale = 1f)
         ) {
             Box(modifier = Modifier.fillMaxSize()) {
-                if (hasImage) {
-                    AsyncImage(
-                        model = imageModel,
-                        contentDescription = item.title,
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Crop
-                    )
+                val mediaLayerModifier = if (hasLandscapeLogo) {
+                    Modifier
+                        .fillMaxSize()
+                        .drawWithCache {
+                            onDrawWithContent {
+                                drawContent()
+                                drawRect(brush = MODERN_LANDSCAPE_LOGO_GRADIENT, size = size)
+                            }
+                        }
                 } else {
-                    MonochromePosterPlaceholder()
+                    Modifier.fillMaxSize()
                 }
 
-                if (shouldPlayTrailerInCard) {
-                    TrailerPlayer(
-                        trailerUrl = trailerPreviewUrl,
-                        isPlaying = true,
-                        onEnded = onTrailerEnded,
-                        muted = focusedPosterBackdropTrailerMuted,
-                        cropToFill = true,
-                        overscanZoom = MODERN_TRAILER_OVERSCAN_ZOOM,
-                        modifier = Modifier.fillMaxSize()
-                    )
+                Box(modifier = mediaLayerModifier) {
+                    if (hasImage) {
+                        AsyncImage(
+                            model = imageModel,
+                            contentDescription = item.title,
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop
+                        )
+                    } else {
+                        MonochromePosterPlaceholder()
+                    }
+
+                    if (shouldPlayTrailerInCard) {
+                        TrailerPlayer(
+                            trailerUrl = trailerPreviewUrl,
+                            trailerAudioUrl = trailerPreviewAudioUrl,
+                            isPlaying = true,
+                            onEnded = onTrailerEnded,
+                            muted = focusedPosterBackdropTrailerMuted,
+                            cropToFill = true,
+                            overscanZoom = MODERN_TRAILER_OVERSCAN_ZOOM,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
                 }
 
                 if (hasLandscapeLogo) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(MODERN_LANDSCAPE_LOGO_GRADIENT)
-                    )
                     AsyncImage(
                         model = logoModel,
                         contentDescription = item.title,
+                        onError = { landscapeLogoLoadFailed = true },
                         modifier = Modifier
                             .align(Alignment.BottomStart)
                             .fillMaxWidth(0.62f)
@@ -645,6 +684,18 @@ private fun ModernCarouselCard(
                             .padding(start = 10.dp, end = 10.dp, bottom = 8.dp),
                         contentScale = ContentScale.Fit,
                         alignment = Alignment.CenterStart
+                    )
+                } else if (useLandscapePosters) {
+                    Text(
+                        text = item.title,
+                        style = titleStyle,
+                        color = Color.White,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier
+                            .align(Alignment.BottomStart)
+                            .fillMaxWidth(0.62f)
+                            .padding(start = 10.dp, end = 10.dp, bottom = 12.dp)
                     )
                 }
 

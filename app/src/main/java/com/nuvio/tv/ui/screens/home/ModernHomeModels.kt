@@ -2,6 +2,7 @@ package com.nuvio.tv.ui.screens.home
 
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.Stable
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -14,7 +15,7 @@ internal const val MODERN_HERO_TEXT_WIDTH_FRACTION = 0.42f
 internal const val MODERN_HERO_BACKDROP_HEIGHT_FRACTION = 0.62f
 internal const val MODERN_TRAILER_OVERSCAN_ZOOM = 1.35f
 internal const val MODERN_HERO_FOCUS_DEBOUNCE_MS = 90L
-internal val MODERN_ROW_HEADER_FOCUS_INSET = 56.dp
+internal val MODERN_ROW_HEADER_FOCUS_INSET = 40.dp
 internal val MODERN_LANDSCAPE_LOGO_GRADIENT = Brush.verticalGradient(
     colorStops = arrayOf(
         0.0f to Color.Transparent,
@@ -97,17 +98,24 @@ internal data class ModernCatalogRowBuildCacheEntry(
     val mappedRow: HeroCarouselRow
 )
 
+@Stable
 internal class ModernHomeUiCaches {
     val focusedItemByRow = mutableMapOf<String, Int>()
     val itemFocusRequesters = mutableMapOf<String, MutableMap<String, FocusRequester>>()
     val rowListStates = mutableMapOf<String, LazyListState>()
     val loadMoreRequestedTotals = mutableMapOf<String, Int>()
+
+    fun requesterFor(rowKey: String, itemKey: String): FocusRequester {
+        val byIndex = itemFocusRequesters.getOrPut(rowKey) { mutableMapOf() }
+        return byIndex.getOrPut(itemKey) { FocusRequester() }
+    }
 }
 
 internal class ModernCarouselRowBuildCache {
     var continueWatchingItems: List<ContinueWatchingItem> = emptyList()
     var continueWatchingTitle: String = ""
     var continueWatchingAirsDateTemplate: String = ""
+    var continueWatchingUpcomingLabel: String = ""
     var continueWatchingUseLandscapePosters: Boolean = false
     var continueWatchingRow: HeroCarouselRow? = null
     val catalogRows = mutableMapOf<String, ModernCatalogRowBuildCacheEntry>()
@@ -117,43 +125,60 @@ internal class ModernCarouselRowBuildCache {
 internal fun buildContinueWatchingItem(
     item: ContinueWatchingItem,
     useLandscapePosters: Boolean,
-    airsDateTemplate: String = "Airs %s"
+    airsDateTemplate: String,
+    upcomingLabel: String
 ): ModernCarouselItem {
     val heroPreview = when (item) {
-        is ContinueWatchingItem.InProgress -> HeroPreview(
-            title = item.progress.name,
-            logo = item.progress.logo,
-            description = item.episodeDescription ?: item.progress.episodeTitle,
-            contentTypeText = item.progress.contentType.replaceFirstChar { ch -> ch.uppercase() },
-            yearText = null,
-            imdbText = null,
-            genres = emptyList(),
-            poster = item.progress.poster,
-            backdrop = item.progress.backdrop,
-            imageUrl = if (useLandscapePosters) {
-                item.progress.backdrop ?: item.progress.poster
-            } else {
-                item.progress.poster ?: item.progress.backdrop
+        is ContinueWatchingItem.InProgress -> {
+            val isSeries = isSeriesType(item.progress.contentType)
+            val episodeCode = item.progress.episodeDisplayString
+            val episodeTitle = item.progress.episodeTitle?.takeIf { it.isNotBlank() }
+            val episodeLabel = when {
+                isSeries && episodeCode != null && episodeTitle != null -> "$episodeCode · $episodeTitle"
+                isSeries && episodeCode != null -> episodeCode
+                isSeries && episodeTitle != null -> episodeTitle
+                else -> item.progress.contentType.replaceFirstChar { ch -> ch.uppercase() }
             }
-        )
-        is ContinueWatchingItem.NextUp -> HeroPreview(
-            title = item.info.name,
-            logo = item.info.logo,
-            description = item.info.episodeDescription
-                ?: item.info.episodeTitle
-                ?: item.info.airDateLabel?.let { airsDateTemplate.format(it) },
-            contentTypeText = item.info.contentType.replaceFirstChar { ch -> ch.uppercase() },
-            yearText = null,
-            imdbText = null,
-            genres = emptyList(),
-            poster = item.info.poster,
-            backdrop = item.info.backdrop,
-            imageUrl = if (useLandscapePosters) {
-                firstNonBlank(item.info.backdrop, item.info.poster, item.info.thumbnail)
-            } else {
-                firstNonBlank(item.info.poster, item.info.backdrop, item.info.thumbnail)
-            }
-        )
+            HeroPreview(
+                title = item.progress.name,
+                logo = item.progress.logo,
+                description = item.episodeDescription ?: item.progress.episodeTitle,
+                contentTypeText = episodeLabel,
+                yearText = extractYear(item.releaseInfo),
+                imdbText = item.episodeImdbRating?.let { String.format("%.1f", it) },
+                genres = item.genres,
+                poster = item.progress.poster,
+                backdrop = item.progress.backdrop,
+                imageUrl = if (useLandscapePosters) {
+                    item.progress.backdrop ?: item.progress.poster
+                } else {
+                    item.progress.poster ?: item.progress.backdrop
+                }
+            )
+        }
+        is ContinueWatchingItem.NextUp -> {
+            val episodeCode = "S${item.info.season}E${item.info.episode}"
+            val episodeTitle = item.info.episodeTitle?.takeIf { it.isNotBlank() }
+            val episodeLabel = if (episodeTitle != null) "$episodeCode · $episodeTitle" else episodeCode
+            HeroPreview(
+                title = item.info.name,
+                logo = item.info.logo,
+                description = item.info.episodeDescription
+                    ?: item.info.episodeTitle
+                    ?: item.info.airDateLabel?.let { airsDateTemplate.format(it) },
+                contentTypeText = episodeLabel,
+                yearText = extractYear(item.info.releaseInfo),
+                imdbText = item.info.imdbRating?.let { String.format("%.1f", it) },
+                genres = item.info.genres,
+                poster = item.info.poster,
+                backdrop = item.info.backdrop,
+                imageUrl = if (useLandscapePosters) {
+                    firstNonBlank(item.info.backdrop, item.info.poster, item.info.thumbnail)
+                } else {
+                    firstNonBlank(item.info.poster, item.info.backdrop, item.info.thumbnail)
+                }
+            )
+        }
     }
 
     val imageUrl = when (item) {
@@ -194,7 +219,7 @@ internal fun buildContinueWatchingItem(
                 if (item.info.hasAired) {
                     code
                 } else {
-                    item.info.airDateLabel?.let { "$code • Airs $it" } ?: "$code • Upcoming"
+                    item.info.airDateLabel?.let { "$code • ${airsDateTemplate.format(it)}" } ?: "$code • $upcomingLabel"
                 }
             }
         },
@@ -240,7 +265,7 @@ internal fun buildCatalogItem(
         payload = ModernPayload.Catalog(
             focusKey = "${row.key()}::${item.id}",
             itemId = item.id,
-            itemType = item.type.toApiString(),
+            itemType = item.apiType,
             addonBaseUrl = row.addonBaseUrl,
             trailerTitle = item.name,
             trailerReleaseInfo = item.releaseInfo,
@@ -265,14 +290,18 @@ internal fun catalogRowKey(row: CatalogRow): String {
 
 internal fun catalogRowTitle(
     row: CatalogRow,
-    showCatalogTypeSuffix: Boolean
+    showCatalogTypeSuffix: Boolean,
+    strTypeMovie: String = "",
+    strTypeSeries: String = ""
 ): String {
     val catalogName = row.catalogName.replaceFirstChar { it.uppercase() }
-    return if (showCatalogTypeSuffix) {
-        "$catalogName - ${row.apiType.replaceFirstChar { it.uppercase() }}"
-    } else {
-        catalogName
+    if (!showCatalogTypeSuffix) return catalogName
+    val typeLabel = when (row.apiType.lowercase()) {
+        "movie" -> strTypeMovie.ifBlank { row.apiType.replaceFirstChar { it.uppercase() } }
+        "series" -> strTypeSeries.ifBlank { row.apiType.replaceFirstChar { it.uppercase() } }
+        else -> row.apiType.replaceFirstChar { it.uppercase() }
     }
+    return "$catalogName - $typeLabel"
 }
 
 internal fun CatalogRow.key(): String {
